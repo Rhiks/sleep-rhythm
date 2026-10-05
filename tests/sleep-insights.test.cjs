@@ -1,286 +1,185 @@
 'use strict';
+// Synthetic fixtures only. Never publish personal health exports in this repository.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { execFileSync } = require('node:child_process');
-const Insights = require('../sleep-insights.js');
-
-const NOW = new Date(2026, 9, 5, 16, 0, 0);
-function night(date, change = {}) {
-  return Object.assign({
-    d: date, on: 300, off: 800, tst: 480,
-    core: 300, deep: 80, rem: 100, unspec: 0, awake: 20,
-    hr: 55, hrv: 60
-  }, change);
+const {execFileSync} = require('node:child_process');
+const I = require('../sleep-insights.js');
+const NOW = new Date(2026,9,5,22);
+function night(d='2026-10-04', extra={}) {
+  return {d,on:300,off:800,tst:480,core:300,deep:80,rem:100,awake:20,unspec:0,hr:55,hrv:60,...extra};
 }
-function summarize(n, all = [n], settings = {}) {
-  return Insights.summarize(n, all, settings, NOW);
+function history(count=10, extra={}) {
+  return Array.from({length:count},(_,i)=>night(I.shiftDay('2026-10-04',-i-1),extra));
 }
-function history(count, change = {}) {
-  return Array.from({ length: count }, (_, i) => night(Insights.shiftDay('2026-10-04', -i - 1), change));
+function summarize(n=night(), all=history(), settings={}) {
+  return I.summarize(n,[...all,n],settings,NOW);
 }
 
-test('browser script exposes the same public API without CommonJS', () => {
-  const context = { window: {} };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../sleep-insights.js'), 'utf8'), context);
-  assert.deepEqual(Object.keys(context.window.SleepInsights).sort(), Object.keys(Insights).sort());
-  assert.equal(context.window.SleepInsights.shiftDay('2026-10-01', -1), '2026-09-30');
+test('browser and CommonJS expose the same API',()=>{
+  const context={window:{}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../sleep-insights.js'),'utf8'),context);
+  assert.deepEqual(Object.keys(context.window.SleepInsights).sort(),Object.keys(I).sort());
 });
-
-test('calendar helpers handle month/year/leap boundaries and reject malformed dates', () => {
-  assert.equal(Insights.shiftDay('2026-10-01', -1), '2026-09-30');
-  assert.equal(Insights.shiftDay('2027-01-01', -1), '2026-12-31');
-  assert.equal(Insights.shiftDay('2024-03-01', -1), '2024-02-29');
-  assert.equal(Insights.shiftDay('2026-03-01', -1), '2026-02-28');
-  assert.equal(Insights.shiftDay('2026-02-30', 0), null);
-  assert.equal(Insights.shiftDay('2026-2-03', 1), null);
-  assert.equal(Insights.shiftDay('2026-10-04', 0.5), null);
-  assert.equal(Insights.localDayKey(new Date('invalid')), null);
+test('calendar helpers handle leap years and reject malformed dates',()=>{
+  assert.equal(I.shiftDay('2027-01-01',-1),'2026-12-31');
+  assert.equal(I.shiftDay('2024-03-01',-1),'2024-02-29');
+  assert.equal(I.shiftDay('2026-03-01',-1),'2026-02-28');
+  assert.equal(I.shiftDay('2026-02-30',1),null);
+  assert.equal(I.shiftDay('2026-2-03',1),null);
+  assert.equal(I.shiftDay('2026-10-04',.5),null);
+  assert.equal(I.localDayKey(new Date('invalid')),null);
 });
-
-test('local dates and completion checks are correct in UTC, Shanghai and New York, including DST', () => {
-  const modulePath = path.join(__dirname, '../sleep-insights.js');
-  const script = `
-    const S = require(${JSON.stringify(modulePath)});
-    const n = { d:'2026-10-04', on:300, off:810, tst:480, awake:30, core:300, deep:80, rem:100, unspec:0 };
-    const date = new Date('2026-10-04T20:00:00Z');
-    const morning = new Date(2026,9,5,8,0,0);
-    const result = S.summarize(n,[n],{},morning);
-    const dst = S.summarize({ ...n, d:'2026-03-07' },[],{},new Date(2026,2,8,8,0,0));
-    process.stdout.write(JSON.stringify({ local:S.localDayKey(date), last:result.isLastNight, wake:result.wakeDate, dst:dst.isLastNight, shift:S.shiftDay('2026-03-08',-1) }));
-  `;
-  for (const [tz, expected] of [['UTC', '2026-10-04'], ['Asia/Shanghai', '2026-10-05'], ['America/New_York', '2026-10-04']]) {
-    const result = JSON.parse(execFileSync(process.execPath, ['-e', script], { env: { ...process.env, TZ: tz }, encoding: 'utf8' }));
-    assert.equal(result.local, expected, tz);
-    assert.equal(result.last, true, tz);
-    assert.equal(result.wake, '2026-10-05', tz);
-    assert.equal(result.dst, true, tz);
-    assert.equal(result.shift, '2026-03-07', tz);
+test('local dates and completion work across timezones and DST',()=>{
+  const modulePath=path.join(__dirname,'../sleep-insights.js');
+  const script=`const I=require(${JSON.stringify(modulePath)}),n=${JSON.stringify(night())};const s=I.summarize(n,[],{},new Date(2026,9,5,8));const dst=I.summarize({...n,d:'2026-03-07'},[],{},new Date(2026,2,8,8));process.stdout.write(JSON.stringify([s.isLastNight,s.wakeDate,dst.isLastNight,I.shiftDay('2026-03-08',-1)]));`;
+  for(const tz of ['UTC','Asia/Tokyo','Asia/Shanghai','America/New_York']) {
+    const got=JSON.parse(execFileSync(process.execPath,['-e',script],{env:{...process.env,TZ:tz},encoding:'utf8'}));
+    assert.deepEqual(got,[true,'2026-10-05',true,'2026-03-07'],tz);
   }
 });
-
-test('latest night skips under-three-hour records as requested and does not relabel the fallback last night', () => {
-  const previous = night('2026-10-03');
-  const short = night('2026-10-04', { tst: 179, core: 99, deep: 30, rem: 50, awake: 5, off: 484 });
-  const input = [previous, short];
-  assert.equal(Insights.latestNight(input, NOW), previous);
-  assert.deepEqual(input, [previous, short], 'selection does not mutate the array');
-  const latest = summarize(previous, input);
-  assert.equal(latest.isLastNight, false);
-  assert.equal(latest.staleDays, 1);
-  const direct = summarize(short);
-  assert.equal(direct.quality.label, '记录不完整');
-  assert.equal(direct.quality.limited, true);
-  assert.equal(direct.delta.tst, null);
-  assert.match(direct.quality.summary, /不足3小时/);
-  const exactlyThreeHours = night('2026-10-04', { tst: 180, core: 100, deep: 30, rem: 50, awake: 5, off: 485 });
-  assert.equal(Insights.latestNight([previous, exactlyThreeHours], NOW), exactlyThreeHours);
+test('under 3h skipped but exactly 3h eligible, with no mutation',()=>{
+  const old=night('2026-10-03');
+  const short=night(undefined,{tst:179,core:99,deep:30,rem:50,awake:5,off:484});
+  const all=[old,short], before=JSON.stringify(all);
+  assert.equal(I.latestNight(all,NOW),old);
+  assert.equal(JSON.stringify(all),before);
+  assert.equal(summarize(short).delta.hrv,null);
+  assert.match(summarize(short).quality.summary,/不足3小时/);
+  const exactly=night(undefined,{tst:180,core:100,deep:30,rem:50,awake:5,off:485});
+  assert.equal(I.latestNight([exactly],NOW),exactly);
+  assert.equal(summarize(exactly).quality.label,'睡得偏少');
 });
-
-test('latest selection ignores unfinished/future records and prefers last night over a current-evening record', () => {
-  const old = night('2026-10-02');
-  const last = night('2026-10-04');
-  const unfinished = night('2026-10-04', { off: 1400, tst: 1000, core: 800, deep: 100, rem: 100, awake: 100 });
-  const future = night('2026-10-05');
-  assert.equal(Insights.latestNight([future, old, unfinished], NOW), old);
-  assert.equal(Insights.latestNight([future, last, old], NOW), last);
-  assert.equal(Insights.latestNight([future, unfinished], NOW), null);
-  const evening = night('2026-10-05', { on: 0, off: 200, tst: 180, awake: 20, core: 100, deep: 30, rem: 50 });
-  const eveningNow = new Date(2026, 9, 5, 23, 0, 0);
-  assert.equal(Insights.latestNight([evening, last], eveningNow), last);
-  assert.equal(Insights.summarize(evening, [], {}, eveningNow).isCurrentNight, true);
-  const atNight = Insights.summarize(last, [], {}, new Date(2026, 9, 5, 1, 0, 0));
-  assert.equal(atNight.isCurrentNight, true);
-  assert.equal(atNight.isLastNight, false);
-  assert.equal(atNight.quality.label, '记录不完整');
+test('ignore future or unfinished records and prefer yesterday over current evening',()=>{
+  const old=night('2026-10-02'), yesterday=night(), future=night('2026-10-06');
+  const unfinished=night(undefined,{off:1400,tst:1000,core:800,deep:100,rem:100,awake:100});
+  assert.equal(I.latestNight([old,future,unfinished],new Date(2026,9,5,16)),old);
+  const evening=night('2026-10-05',{on:0,off:200,tst:180,core:100,deep:30,rem:50,awake:20});
+  assert.equal(I.latestNight([evening,yesterday],NOW),yesterday);
+  assert.equal(I.summarize(evening,[],{},NOW).isCurrentNight,true);
+  assert.equal(I.summarize(yesterday,[],{},new Date(2026,9,5,1)).quality.label,'记录不完整');
 });
-
-test('stale data reports its actual wake date and calendar staleness', () => {
-  const result = summarize(night('2026-09-30'));
-  assert.equal(result.date, '2026-09-30');
-  assert.equal(result.wakeDate, '2026-10-01');
-  assert.equal(result.isLastNight, false);
-  assert.equal(result.isCurrentNight, false);
-  assert.equal(result.staleDays, 4);
+test('stale fallback is not mislabeled last night',()=>{
+  const s=summarize(night('2026-09-30'));
+  assert.equal(s.staleDays,4);assert.equal(s.isLastNight,false);assert.equal(s.wakeDate,'2026-10-01');
 });
-
-test('missing Deep/REM stay unknown while measured zero deep sleep is a real zero', () => {
-  const missing = summarize(night('2026-10-04', { core: 0, deep: null, rem: null, unspec: 480 }));
-  assert.equal(missing.stages.deepMinutes, null);
-  assert.equal(missing.stages.remMinutes, null);
-  assert.equal(missing.stages.deepPct, null);
-  assert.equal(missing.stages.valid, false);
-  assert.equal(missing.stages.unknownMinutes, 480);
-  assert.equal(missing.quality.label, '时长够了');
-  assert.equal(missing.quality.limited, true);
-  const zero = summarize(night('2026-10-04', { core: 380, deep: 0, rem: 100 }));
-  assert.equal(zero.stages.valid, true);
-  assert.equal(zero.stages.deepMinutes, 0);
-  assert.equal(zero.stages.deepPct, 0);
-  const allCore = Insights.stageStats(night('2026-10-04', { core: 480, deep: 0, rem: 0 }));
-  assert.equal(allCore.valid, true);
-  assert.equal(allCore.corePct, 100);
+test('8h+ sleep with 32m unrecorded retains metrics, deltas and verdict',()=>{
+  const n=night(undefined,{tst:520,core:320,deep:85,rem:115,off:872}),s=summarize(n);
+  assert.equal(s.durationMinutes,520);assert.equal(s.unrecordedMinutes,32);assert.equal(s.awakeMinutes,20);
+  assert.equal(s.delta.hrv,0);assert.ok(s.stages.valid);
+  assert.notEqual(s.quality.label,'记录不完整');assert.equal(s.quality.scope,'recorded');
+  assert.equal(s.quality.signals.fragmented,false);assert.ok(s.quality.warnings.some(x=>x.includes('32分钟')));
 });
-
-test('stage percentages use staged sleep, and low coverage blocks reassuring comparisons', () => {
-  const n = night('2026-10-04', { core: 240, deep: 60, rem: 60, unspec: 120 });
-  const result = summarize(n, [...history(8), n]);
-  assert.equal(result.stages.stagedMinutes, 360);
-  assert.equal(result.stages.totalMinutes, 480);
-  assert.equal(result.stages.deepPct, 16.7);
-  assert.equal(result.stages.coverage, 75);
-  assert.equal(result.stages.unknownMinutes, 120);
-  assert.equal(result.stages.valid, true);
-  assert.equal(result.stages.comparable, false);
-  assert.equal(result.delta.deepPct, null);
-  assert.equal(result.delta.deepMinutes, null);
-  assert.equal(result.delta.tst, 0, 'usable duration can still be compared');
-  assert.equal(result.quality.label, '时长够了');
-  assert.equal(result.quality.limited, true);
-});
-
-test('rounded backup totals tolerate up to three minutes without manufacturing an invalid night', () => {
-  const n = night('2026-10-04', { on: 420, off: 1039, tst: 608, core: 322, deep: 91, rem: 195, awake: 12 });
-  const result = summarize(n);
-  assert.equal(result.durationMinutes, 608);
-  assert.equal(result.spanMinutes, 619);
-  assert.equal(result.unrecordedMinutes, 0);
-  assert.equal(result.stages.valid, true);
-  assert.equal(result.stages.deepPct, 15);
-  assert.equal(result.quality.label, '睡得不错');
-  assert.equal(result.quality.limited, false);
-  const withinTolerance = summarize(night('2026-10-04', { core: 303, off: 797 }));
-  assert.equal(withinTolerance.stages.valid, true);
-  assert.equal(withinTolerance.quality.label, '睡得不错');
-  assert.ok(withinTolerance.stages.coverage <= 100);
-});
-
-test('impossible overlapping totals and invalid timing cannot produce reassuring quality or percentages', () => {
-  for (const n of [
-    night('2026-10-04', { off: 795 }),
-    night('2026-10-04', { deep: 100 }),
-    night('2026-10-04', { off: 200 }),
-    night('2026-10-04', { tst: -1 }),
-    night('2026-10-04', { deep: -1 }),
-    night('2026-10-04', { rem: '100' })
-  ]) {
-    const result = summarize(n);
-    assert.equal(result.quality.label, '记录需要核对', JSON.stringify(n));
-    assert.equal(result.quality.limited, true);
-    assert.equal(result.stages.deepPct, null);
-    assert.equal(result.delta.tst, null);
+test('there is no 30-minute visibility or baseline-comparison cutoff',()=>{
+  for(const gap of [0,29,30,31,32,60,120,240]) {
+    const n=night(undefined,{off:800+gap}),s=summarize(n);
+    assert.equal(I.latestNight([n],NOW),n);assert.equal(s.unrecordedMinutes,gap);
+    assert.equal(s.durationMinutes,480);assert.equal(s.delta.hrv,0);assert.equal(s.delta.deepPct,0);
+    assert.equal(s.quality.signals.fragmented,false);assert.notEqual(s.quality.label,'记录不完整');
+    if(gap>=60) assert.match(s.quality.label,/已记录部分/);
   }
 });
-
-test('unrecorded gaps are distinct from recorded wake and n.gap/n.split never establish wakefulness', () => {
-  const complete = summarize(night('2026-10-04', { gap: 180, split: 1 }));
-  assert.equal(complete.awakeMinutes, 20);
-  assert.equal(complete.unrecordedMinutes, 0);
-  assert.equal(complete.quality.label, '睡得不错');
-  const missing = summarize(night('2026-10-04', { off: 851 }));
-  assert.equal(missing.awakeMinutes, 20);
-  assert.equal(missing.unrecordedMinutes, 51);
-  assert.equal(missing.quality.label, '记录不完整');
-  assert.equal(missing.quality.limited, true);
-  assert.match(missing.quality.reasons.join(' '), /不能直接当作清醒/);
-  const proportionGap = summarize(night('2026-10-04', { tst: 180, core: 100, deep: 30, rem: 50, awake: 5, off: 506 }));
-  assert.equal(proportionGap.unrecordedMinutes, 21);
-  assert.equal(proportionGap.quality.label, '记录不完整', 'a <30 minute gap still matters if it exceeds 10%');
+test('legacy split and gap fields do not establish measured wakefulness',()=>{
+  const s=summarize(night(undefined,{gap:180,split:1}));
+  assert.equal(s.awakeMinutes,20);assert.equal(s.unrecordedMinutes,0);assert.equal(s.quality.signals.fragmented,false);
 });
-
-test('clinical-duration and continuity hints are transparent and do not punish long sleep or low deep sleep', () => {
-  const fixtures = [
-    [300, 20, '睡得偏少'], [390, 20, '时长略少'],
-    [420, 20, '睡得不错'], [480, 45, '睡眠一般'],
-    [480, 70, '睡得不太踏实'], [660, 20, '睡得不错']
-  ];
-  for (const [tst, awake, label] of fixtures) {
-    const result = summarize(night('2026-10-04', { tst, awake, off: 300 + tst + awake, core: tst - 100, deep: 0, rem: 100 }));
-    assert.equal(result.quality.label, label, `${tst} min sleep / ${awake} min awake`);
-    assert.match(result.quality.method, /不是医学评分/);
-    assert.match(result.quality.method, /深睡比例.*不参与好坏评级/);
-    assert.equal(Object.prototype.hasOwnProperty.call(result.quality, 'score'), false);
+test('stage denominator excludes unspecified sleep, which is not an unrecorded gap',()=>{
+  const s=summarize(night(undefined,{core:240,deep:60,rem:60,unspec:120}));
+  assert.equal(s.stages.deepPct,16.7);assert.equal(s.stages.confirmedDeepPct,12.5);
+  assert.equal(s.stages.coverage,75);assert.equal(s.stages.unknownMinutes,120);assert.equal(s.unrecordedMinutes,0);
+  assert.equal(s.delta.deepPct,null);assert.equal(s.delta.hrv,0);assert.notEqual(s.quality.tone,'good');
+});
+test('missing deep remains unknown but measured zero remains zero',()=>{
+  const missing=summarize(night(undefined,{core:0,deep:null,rem:null,unspec:480}));
+  assert.equal(missing.stages.deepPct,null);assert.equal(missing.stages.deepMinutes,null);
+  const zero=summarize(night(undefined,{core:380,deep:0}));
+  assert.equal(zero.stages.deepPct,0);assert.equal(zero.quality.signals.deepLow,true);assert.equal(zero.quality.tone,'warn');
+});
+test('three-minute rounding tolerance does not silently accept impossible totals',()=>{
+  for(const extra of [0,1,2,3]) assert.equal(summarize(night(undefined,{off:800-extra})).stages.valid,true);
+  assert.equal(summarize(night(undefined,{off:796})).quality.label,'记录需要核对');
+  assert.equal(summarize(night(undefined,{core:303})).stages.valid,true);
+  assert.equal(summarize(night(undefined,{core:304})).quality.label,'记录需要核对');
+});
+test('invalid totals and timing cannot produce reassuring quality',()=>{
+  for(const extra of [{off:200},{tst:-1},{deep:-1},{rem:'100'},{deep:120}]) {
+    const s=summarize(night(undefined,extra));
+    assert.equal(s.quality.label,'记录需要核对');assert.equal(s.stages.deepPct,null);assert.equal(s.delta.tst,null);
   }
 });
-
-test('baseline is the prior 28 calendar days, excludes current, old and short dates, and deduplicates nights', () => {
-  const current = night('2026-10-04', { hr: 65 });
-  const first = night('2026-09-06'); // Exactly current date minus 28 days.
-  const outside = night('2026-09-05', { hr: 200 });
-  const h = history(4);
-  const short = night('2026-09-20', { tst: 120, core: 60, deep: 20, rem: 40, off: 440 });
-  const all = [outside, current, h[2], first, h[0], short, h[3], h[1], h[0], night('2026-10-05')];
-  const result = summarize(current, all);
-  assert.equal(result.baseline.start, '2026-09-06');
-  assert.equal(result.baseline.end, '2026-10-03');
-  assert.equal(result.baseline.count, 5);
-  assert.equal(result.baseline.stageCount, 5);
-  assert.equal(result.baseline.recordedDays, 6);
-  assert.equal(result.baseline.missingDays, 22);
-  assert.equal(result.baseline.excludedNights, 1);
-  assert.equal(result.baseline.tst, 480);
-  assert.equal(result.baseline.hr, 55);
-  assert.equal(result.delta.hr, 10);
+test('baselines use prior 28 calendar days, not current or duplicate dates',()=>{
+  const n=night(undefined,{hrv:100}),prior=history(35),s=summarize(n,prior);
+  assert.equal(s.baseline.count,28);assert.equal(s.baseline.hrv,60);assert.equal(s.baseline.start,'2026-09-06');
+  assert.equal(s.baseline.end,'2026-10-03');
+  assert.deepEqual(summarize(n,prior).baseline,summarize(n,[...prior,...prior]).baseline);
 });
-
-test('each baseline metric requires at least five comparable non-null measurements', () => {
-  const current = night('2026-10-04');
-  const h = history(6);
-  h[0].hr = null;
-  h[1].hr = null;
-  h[0].hrv = null;
-  h[0].deep = null;
-  h[1].deep = null;
-  const result = summarize(current, [current, ...h]);
-  assert.equal(result.baseline.count, 6);
-  assert.equal(result.baseline.tst, 480);
-  assert.equal(result.baseline.hr, null);
-  assert.equal(result.baseline.counts.hr, 4);
-  assert.equal(result.baseline.hrv, 60);
-  assert.equal(result.baseline.counts.hrv, 5);
-  assert.equal(result.baseline.deepMinutes, null);
-  assert.equal(result.baseline.deepPct, null);
-  assert.equal(result.baseline.stageCount, 4);
-  assert.equal(result.delta.hr, null);
-  assert.equal(result.delta.hrv, 0);
-  assert.equal(result.delta.deepMinutes, null);
-  const tooFew = summarize(current, history(4));
-  assert.equal(tooFew.baseline.count, 4);
-  for (const key of ['tst', 'deepMinutes', 'deepPct', 'awake', 'hr', 'hrv']) assert.equal(tooFew.baseline[key], null);
+test('each metric needs at least five samples; missing values are not zero',()=>{
+  assert.equal(summarize(night(),history(4)).baseline.hrv,null);
+  assert.equal(summarize(night(),history(5)).baseline.hrv,60);
+  const prior=history(6);prior[0].hr=null;prior[1].hr=null;prior[0].hrv=null;prior[0].deep=null;prior[1].deep=null;
+  const s=summarize(night(),prior);
+  assert.equal(s.baseline.count,6);assert.equal(s.baseline.counts.hr,4);assert.equal(s.baseline.hr,null);
+  assert.equal(s.baseline.counts.hrv,5);assert.equal(s.baseline.hrv,60);assert.equal(s.baseline.deepPct,null);
 });
-
-test('baseline excludes incomplete/invalid nights, while stage coverage affects only stage comparisons', () => {
-  const current = night('2026-10-04');
-  const h = history(8);
-  h[0].off += 80; // Unknown recording gap.
-  h[1].off -= 60; // Impossible total.
-  h[2].core = 240; h[2].deep = 60; h[2].rem = 60; h[2].unspec = 120;
-  const result = summarize(current, h);
-  assert.equal(result.baseline.count, 6);
-  assert.equal(result.baseline.stageCount, 5);
-  assert.equal(result.baseline.counts.tst, 6);
-  assert.equal(result.baseline.deepMinutes, 80);
-  assert.equal(result.baseline.excludedNights, 2);
+test('partial long nights remain in baselines; invalid and under-3h records do not',()=>{
+  const prior=history(8,{off:850});assert.equal(summarize(night(),prior).baseline.count,8);
+  prior[0].off=200;
+  Object.assign(prior[1],{tst:60,core:60,deep:0,rem:0,off:380});
+  assert.equal(summarize(night(),prior).baseline.count,6);
+  assert.equal(summarize(night(),prior).baseline.excludedNights,2);
 });
-
-test('target gap and wake offset have stable units; missing measures are never converted to zero', () => {
-  const n = night('2026-10-04');
-  const result = summarize(n, [], { targetSleep: 540, wake: 420 });
-  assert.equal(result.targetMinutes, 540);
-  assert.equal(result.durationGap, 60);
-  assert.equal(result.wakeOffsetMinutes, 20);
-  assert.equal(summarize(n, [], { targetSleep: null }).targetMinutes, 480);
-  assert.equal(summarize(n, [], { targetSleep: 420 }).durationGap, 0);
-  const missing = summarize(night('2026-10-04', { awake: null, hr: null, hrv: null }));
-  assert.equal(missing.awakeMinutes, null);
-  assert.equal(missing.unrecordedMinutes, null);
-  assert.equal(missing.quality.label, '记录不完整');
-  const resultKeys = Object.keys(result).sort();
-  assert.deepEqual(resultKeys, [
-    'date', 'wakeDate', 'isLastNight', 'isCurrentNight', 'staleDays', 'quality', 'stages', 'baseline', 'delta',
-    'durationMinutes', 'awakeMinutes', 'spanMinutes', 'unrecordedMinutes', 'continuityPct',
-    'targetMinutes', 'durationGap', 'wakeOffsetMinutes'
-  ].sort());
+test('long duration and more deep minutes cannot cancel low deep ratio plus low HRV',()=>{
+  const n=night(undefined,{tst:690,core:388,deep:82,rem:220,awake:10,off:1000,hrv:35}),s=summarize(n);
+  assert.equal(s.quality.label,'睡得久，恢复信号偏弱');assert.equal(s.quality.tone,'warn');
+  assert.ok(s.delta.deepMinutes>0);assert.ok(s.delta.deepPct<0);
+  assert.equal(s.quality.signals.deepLow,true);assert.equal(s.quality.signals.hrvLow,true);
+});
+test('low deep ratio counts even with high HRV; high deep minutes do not cancel low HRV',()=>{
+  const deep=summarize(night(undefined,{core:330,deep:50,hrv:120}));
+  assert.equal(deep.quality.signals.deepLow,true);assert.equal(deep.quality.tone,'warn');
+  const hrv=summarize(night(undefined,{core:270,deep:110,hrv:40}));
+  assert.equal(hrv.quality.signals.hrvLow,true);assert.equal(hrv.quality.label,'恢复信号偏弱');
+});
+test('high sleep heart rate is a signal, not an infection diagnosis',()=>{
+  const s=summarize(night(undefined,{hr:65}));assert.equal(s.quality.signals.hrVeryHigh,true);assert.equal(s.quality.tone,'warn');
+  assert.doesNotMatch(s.quality.summary,/感染|发热|心脏病/);
+});
+test('threshold boundaries are explicit product rules and do not invent a medical score',()=>{
+  assert.equal(summarize(night(undefined,{hrv:48})).quality.signals.hrvLow,true);
+  assert.equal(summarize(night(undefined,{hrv:49})).quality.signals.hrvLow,false);
+  assert.equal(summarize(night(undefined,{hr:60})).quality.signals.hrHigh,true);
+  assert.match(summarize().quality.method,/不是临床诊断界值/);
+  assert.equal(Object.hasOwn(summarize().quality,'score'),false);
+});
+test('recorded fatigue changes the verdict while good feelings do not erase signals',()=>{
+  assert.equal(summarize(night(),history(),{feeling:'tired'}).quality.label,'睡后仍然困倦');
+  const s=summarize(night(undefined,{hrv:35}),history(),{feeling:'good'});
+  assert.equal(s.quality.tone,'warn');assert.match(s.quality.summary,/体感不错/);
+});
+test('long sleep alone is not rewarded',()=>{
+  const s=summarize(night(undefined,{tst:650,core:400,deep:110,rem:140,awake:20,off:970}));
+  assert.equal(s.quality.label,'睡得偏长，留意是否解乏');assert.notEqual(s.quality.tone,'good');
+});
+test('missing or nonpositive HRV cannot imply good recovery or an HRV collapse',()=>{
+  for(const hrv of [null,0,-1,'40',NaN]) {
+    const s=summarize(night(undefined,{hrv}));assert.equal(s.delta.hrv,null);
+    assert.equal(s.quality.signals.hrvLow,false);assert.notEqual(s.quality.tone,'good');
+  }
+  assert.equal(summarize(night(),[]).quality.label,'时长够了');
+});
+test('recorded wake counts, unknown wake stays unknown, sleep debt remains visible',()=>{
+  assert.equal(summarize(night(undefined,{awake:70,off:850})).quality.label,'睡得不太踏实');
+  const missing=summarize(night(undefined,{awake:null}));
+  assert.equal(missing.awakeMinutes,null);assert.equal(missing.recordedContinuityPct,null);assert.notEqual(missing.quality.tone,'good');
+  assert.equal(summarize(night(undefined,{tst:350,core:180,deep:80,rem:90,off:670,hrv:100})).quality.label,'睡得偏少');
+});
+test('targets, signed wake offset and input data remain stable',()=>{
+  const n=night(),all=history(),settings={wake:540,targetSleep:540},before=JSON.stringify([n,all,settings]);
+  const s=I.summarize(n,all,settings,NOW);
+  assert.equal(s.targetMinutes,540);assert.equal(s.durationGap,60);assert.equal(s.wakeOffsetMinutes,-100);
+  assert.equal(JSON.stringify([n,all,settings]),before);
+  assert.equal(summarize(n,all,{targetMinutes:510}).targetMinutes,510);
+  assert.equal(summarize(n,all,{sleepTarget:450}).targetMinutes,450);
 });
