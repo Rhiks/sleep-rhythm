@@ -76,6 +76,12 @@ ul.flags b{font-family:var(--num);font-weight:600}
 details summary{cursor:pointer;color:var(--muted)}
 ol.steps{margin:8px 0 0;padding-left:1.3em}
 #status{min-height:1.4em}
+#today .lead{font-family:var(--num);font-size:1.2rem;font-weight:600;line-height:1.35}
+#today .do{margin-top:8px;padding:10px 12px;border-left:3px solid var(--accent);background:var(--bg);border-radius:0 8px 8px 0}
+.win{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.win div{border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.win b{display:block;font-family:var(--num);font-size:1.15rem;font-weight:600;line-height:1.25}
+.win span{font-size:.8rem;color:var(--muted)}
 .empty{padding:26px 10px;text-align:center;color:var(--muted)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -88,7 +94,7 @@ ol.steps{margin:8px 0 0;padding-left:1.3em}
       <p class="sub" id="range"></p>
     </div>
     <div class="row">
-      <input type="file" id="file" accept=".zip,.xml,.txt,text/plain,application/zip" hidden>
+      <input type="file" id="file" hidden>
       <button class="primary" id="importBtn">导入</button>
       <button id="pasteBtn">从剪贴板更新</button>
     </div>
@@ -96,6 +102,11 @@ ol.steps{margin:8px 0 0;padding-left:1.3em}
   <p class="sub" id="status" role="status" aria-live="polite"></p>
 
   <div id="app" hidden>
+    <section aria-labelledby="h-today" style="margin-top:8px">
+      <h2 id="h-today">今天</h2>
+      <div class="panel" id="today" style="margin-top:10px"></div>
+    </section>
+
     <section aria-labelledby="h-acto">
       <div class="row" style="justify-content:space-between">
         <h2 id="h-acto">每晚睡在哪个时段</h2>
@@ -154,7 +165,7 @@ ol.steps{margin:8px 0 0;padding-left:1.3em}
   </div>
 
   <div id="emptyState" class="panel empty" hidden>
-    <p>还没有数据。点“导入”选一次 Apple 健康导出的 zip，或者在页面底部恢复一份备份。</p>
+    <p>还没有数据。点上面的“导入”，选备份文件（json）或 Apple 健康导出的 zip 都可以。</p>
   </div>
 
   <section>
@@ -167,7 +178,7 @@ ol.steps{margin:8px 0 0;padding-left:1.3em}
       </ol>
       <p class="sub" style="margin-top:10px">手表的分期和血氧有误差，深睡平均会少算，单晚数字看方向不看分钟。这里的提示不是诊断。</p>
       <p class="sub" style="margin-top:10px">清除 Safari 网站数据或删掉主屏幕图标会把记录一起清掉，隔一阵导出一份备份。</p>
-      <div class="row" style="margin-top:12px"><input type="file" id="restoreFile" accept=".json,application/json" hidden><button id="backupBtn">导出备份</button><button id="restoreBtn">恢复备份</button><button id="wipe">清空已保存的数据</button></div>
+      <div class="row" style="margin-top:12px"><input type="file" id="restoreFile" hidden><button id="backupBtn">导出备份</button><button id="restoreBtn">恢复备份</button><button id="wipe">清空已保存的数据</button></div>
     </details>
   </section>
 </main>
@@ -433,8 +444,17 @@ if (typeof module !== 'undefined') module.exports = HCore;
 
   /* ---------- import ---------- */
   function wanted(name) { var n = name.toLowerCase(); return /\.xml$/.test(n) && n.indexOf('cda') < 0 && n.indexOf('electrocardiogram') < 0 && n.indexOf('workout-route') < 0; }
+  function restoreText(tx) {
+    var o = null; try { o = JSON.parse(tx); } catch (e) { }
+    if (!o || typeof o.nights !== 'object') throw new Error('这个文件不是本应用导出的备份。');
+    var n = 0; Object.keys(o.nights).forEach(function (d) { if (!S.nights[d]) n++; S.nights[d] = o.nights[d]; });
+    Object.keys(o.days || {}).forEach(function (d) { S.days[d] = o.days[d]; });
+    Object.keys(o.tags || {}).forEach(function (d) { if (!S.tags[d]) S.tags[d] = o.tags[d]; });
+    if (o.settings && o.settings.wake != null) S.settings.wake = o.settings.wake; if (o.vo2 && o.vo2.length) S.vo2 = o.vo2;
+    var ok = saveLocal(); render(); status('已恢复备份，新增 ' + n + ' 晚。' + (ok ? '' : ' 但没能存下来：浏览器存储不可用。'));
+  }
   async function importFile(file) {
-    if (/\.txt$/i.test(file.name) || file.size < 3e6 && !/\.(zip|xml)$/i.test(file.name)) { status('正在读取…'); return importFeed(await file.text()); }
+    if (!/\.(zip|xml)$/i.test(file.name)) { status('正在读取…'); var tx = await file.text(); if (tx.trim().charAt(0) === '{') return restoreText(tx); return importFeed(tx); }
     var parser = HCore.createParser(), dec = new TextDecoder('utf-8'), carry = '', total = file.size, done = 0, found = false, err = null;
     function feed(text) { var s = carry + text, a = 0, b; while ((b = s.indexOf('\n', a)) >= 0) { parser.pushLine(s.substring(a, b)); a = b + 1; } carry = s.substring(a); }
     var reader = file.stream().getReader();
@@ -632,13 +652,45 @@ if (typeof module !== 'undefined') module.exports = HCore;
     ].join('');
   }
 
+  /* ---------- today: verdict + time windows ---------- */
+  function renderToday() {
+    var all = mainNights(), box = $('today'); if (!all.length) { box.innerHTML = ''; return; }
+    var last = all[all.length - 1], rec = all.slice(-7), tgt = S.settings.wake + 360, hw = med(vals(rec, 'off')), ho = med(vals(rec, 'on'));
+    var late = last.off - tgt, streak = 0, i, m;
+    for (i = all.length - 1; i >= 0 && all[i].off - tgt > 45; i--) streak++;
+    var ns = nightsSorted().slice(-15), fr = [];
+    function mask(n) { var a = new Uint8Array(1440); (n.segs || []).forEach(function (g) { if (g[2] === 3) return; for (var k = Math.max(0, g[0]); k < Math.min(1440, g[0] + g[1]); k++) a[k] = 1; }); return a; }
+    for (i = 1; i < ns.length; i++) if (nextDay(ns[i - 1].d) === ns[i].d) { var a = mask(ns[i - 1]), b = mask(ns[i]), eq = 0; for (m = 0; m < 1440; m++) if (a[m] === b[m]) eq++; fr.push(eq / 1440); }
+    var sri = fr.length >= 3 ? Math.round(mean(fr) * 200 - 100) : null;
+    var cbt = hw - 150, step = hw - tgt > 90 ? hw - 60 : tgt, lightFrom = Math.max(step, cbt + 30), dim = ho - 120, bed = Math.max(step - 480, ho - 45), caf = Math.min(-240, bed - 600), gly = Math.max(ho - 60, bed - 60);
+    var dur = function (x) { x = Math.abs(Math.round(x)); return (x >= 60 ? Math.floor(x / 60) + ' 小时 ' : '') + (x % 60) + ' 分'; };
+    var lead = '昨晚 ' + clock(last.on) + ' 入睡，' + clock(last.off) + ' 起床，睡了 ' + hm(last.tst) + '。';
+    var v = late > 45 ? '起床比目标晚 ' + dur(late) + (streak > 1 ? '，已经连续 ' + streak + ' 天偏晚' : '') + '。' : late < -45 ? '起床比目标早 ' + dur(late) + '。' : '起床时间贴着目标。';
+    var dl = vals(daysFor(rec), 'dlAm'), dlm = dl.length ? mean(dl) : null, act;
+    if (late > 45 || hw - tgt > 45) act = '明天 ' + clock(step) + ' 起床，起来后尽快到户外待 20 到 30 分钟。困了再睡，不用提前上床。' + (step !== tgt ? '你最近的习惯起床点是 ' + clock(hw) + '，离目标太远，这周先按 ' + clock(step) + ' 走。' : '');
+    else if (last.split) act = '昨晚睡成了两段。今晚不要比 ' + clock(bed) + ' 更早上床，助眠的东西也别早于 ' + clock(gly) + ' 吃。';
+    else if (dlm != null && dlm < 15) act = '起床时间稳住了，但最近上午日照平均只有 ' + Math.round(dlm) + ' 分钟。明天起床后到户外待够 20 分钟。';
+    else if (last.tst < 360) act = '昨晚睡得少。今天不补长觉，午后小睡不超过 20 分钟，明天仍按 ' + clock(step) + ' 起床。';
+    else act = '照现在的节奏继续，明天仍按 ' + clock(step) + ' 起床。';
+    var word = sri == null ? '' : sri >= 80 ? '稳' : sri >= 65 ? '一般' : '乱';
+    box.innerHTML = '<p class="lead">' + esc(lead) + '</p><p>' + esc(v) + '</p><p class="do">' + esc(act) + '</p>' +
+      '<div class="win">' +
+      '<div><span>明早晒太阳</span><b>' + clock(lightFrom) + ' – ' + clock(lightFrom + 120) + '</b><span>这段时间的光把生物钟往前拨</span></div>' +
+      '<div><span>咖啡因截止</span><b>' + clock(caf) + '</b><span>之后不喝咖啡、茶、功能饮料</span></div>' +
+      '<div><span>调暗灯光和屏幕</span><b>' + clock(dim) + ' 之后</b><span>这之后的强光把生物钟往后推</span></div>' +
+      '<div><span>今晚上床</span><b>不早于 ' + clock(bed) + '</b><span>太早会睡成两段</span></div>' +
+      '<div><span>助眠的东西</span><b>不早于 ' + clock(gly) + '</b><span>比如甘氨酸、甘氨酸镁</span></div>' +
+      (sri == null ? '' : '<div><span>节律规律性</span><b>' + sri + ' <span>/ 100　' + word + '</span></b><span>相邻两天同一时刻睡或醒的一致程度</span></div>') +
+      '</div><p class="hint" style="margin-top:10px">时间窗按最近 7 晚的起床中位数（' + clock(hw) + '）估算，假定体温最低点在起床前约两个半小时；个体差异可以到一小时，当作方向而不是精确时刻。</p>';
+  }
+
   function render() {
     var all = nightsSorted(), has = all.length > 0;
     $('app').hidden = !has; $('emptyState').hidden = has;
     $('range').textContent = has ? ('已记录 ' + all.length + ' 晚，' + label(all[0].d) + ' 到 ' + label(all[all.length - 1].d) + '。数据只存在这台设备上') : '还没有数据';
     if (!has) return;
     var w = S.settings.wake; $('wake').value = ('0' + Math.floor(w / 60)).slice(-2) + ':' + ('0' + (w % 60)).slice(-2);
-    renderActo(); renderCmp(); renderFlags(); renderLog(); renderTrends();
+    renderToday(); renderActo(); renderCmp(); renderFlags(); renderLog(); renderTrends();
   }
 
   /* ---------- events ---------- */
@@ -654,7 +706,7 @@ if (typeof module !== 'undefined') module.exports = HCore;
     [].forEach.call(this.querySelectorAll('button'), function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
     renderActo();
   });
-  $('wake').addEventListener('change', function () { var p = this.value.split(':'); if (p.length < 2) return; S.settings.wake = +p[0] * 60 + +p[1]; renderActo(); renderTrends(); saveSettings(); });
+  $('wake').addEventListener('change', function () { var p = this.value.split(':'); if (p.length < 2) return; S.settings.wake = +p[0] * 60 + +p[1]; renderToday(); renderActo(); renderTrends(); saveSettings(); });
   $('presets').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; var p = b.dataset.p; picked[p] = !picked[p]; b.setAttribute('aria-pressed', picked[p] ? 'true' : 'false'); });
   $('logSave').addEventListener('click', async function () {
     var d = $('logNight').value, items = PRESETS.filter(function (p) { return picked[p]; }), o = $('logOther').value.trim();
@@ -698,7 +750,7 @@ if (typeof module !== 'undefined') module.exports = HCore;
   });
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(function () { });
   var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (!$('app').hidden) renderActo(); }, 150); });
-  loadAll().then(function () { render(); });
+  loadAll().then(function () { render(); if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone) status('你现在是在 Safari 里打开的。这里的数据和主屏幕图标版是分开存的，装好后请从主屏幕图标进。'); });
 })();
 
 </script>
