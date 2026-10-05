@@ -533,7 +533,7 @@ if (typeof module !== 'undefined') module.exports = HCore;
   /* ---------- actogram ---------- */
   var COL = ['var(--core)', 'var(--deep)', 'var(--rem)', 'var(--awake)', 'var(--unspec)'];
   function renderActo() {
-    var all = nightsSorted(), list = span ? all.slice(-span) : all, L = 40, R = 16, W = Math.max(320, Math.min(820, $('acto').clientWidth - 30)), pw = W - L - R, rh = 13, top = 22;
+    var all = mainNights(), list = span ? all.slice(-span) : all, L = 40, R = 16, W = Math.max(320, Math.min(820, $('acto').clientWidth - 30)), pw = W - L - R, rh = 13, top = 22;
     var H = top + list.length * rh + 6, x = function (m) { return L + Math.max(0, Math.min(1440, m)) / 1440 * pw; };
     var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="每晚睡眠时段图">';
     for (var h = 0; h <= 24; h += 3) {
