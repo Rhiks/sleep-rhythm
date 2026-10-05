@@ -78,6 +78,14 @@ ol.steps{margin:8px 0 0;padding-left:1.3em}
 #status{min-height:1.4em}
 #today .lead{font-family:var(--num);font-size:1.2rem;font-weight:600;line-height:1.35}
 #today .do{margin-top:8px;padding:10px 12px;border-left:3px solid var(--accent);background:var(--bg);border-radius:0 8px 8px 0}
+.stg .big{font-family:var(--num);font-weight:700;font-size:2.4rem;line-height:1.05;letter-spacing:-.01em}
+.stg .big small{font-size:1rem;font-weight:500;color:var(--muted);margin-left:8px}
+.stg .bar{display:flex;height:22px;border-radius:6px;overflow:hidden;margin-top:10px;background:var(--line)}
+.stg .bar i{display:block;height:100%}
+.stg .keys{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:.82rem;color:var(--muted)}
+.stg .keys b{font-family:var(--num);color:var(--ink);font-weight:600}
+.stg .keys i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.stg{padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--line)}
 .win{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
 .win div{border:1px solid var(--line);border-radius:10px;padding:9px 10px}
 .win b{display:block;font-family:var(--num);font-size:1.15rem;font-weight:600;line-height:1.25}
@@ -673,7 +681,21 @@ if (typeof module !== 'undefined') module.exports = HCore;
     else if (last.tst < 360) act = '昨晚睡得少。今天不补长觉，午后小睡不超过 20 分钟，明天仍按 ' + clock(step) + ' 起床。';
     else act = '照现在的节奏继续，明天仍按 ' + clock(step) + ' 起床。';
     var word = sri == null ? '' : sri >= 80 ? '稳' : sri >= 65 ? '一般' : '乱';
-    box.innerHTML = '<p class="lead">' + esc(lead) + '</p><p>' + esc(v) + '</p><p class="do">' + esc(act) + '</p>' +
+    var stg = '', tot = (last.deep || 0) + (last.core || 0) + (last.rem || 0);
+    if (last.deep != null && tot > 0) {
+      var pc = function (x) { return Math.round(x / tot * 100); }, prev = all.slice(-29, -1).filter(function (n) { return n.deep != null && (n.deep + n.core + n.rem) > 0; });
+      var bp = med(prev.map(function (n) { return n.deep / (n.deep + n.core + n.rem) * 100; })), bm = med(vals(prev, 'deep')), dp = pc(last.deep), wAll = tot + (last.awake || 0);
+      var cmp = bp == null ? '' : (dp - bp >= 3 ? '，高于' : dp - bp <= -3 ? '，低于' : '，接近') + '你平时的 ' + Math.round(bp) + '%（' + Math.round(bm) + ' 分）';
+      if (bp != null && dp - bp <= -3 && last.deep - bm >= 8) cmp += '；分钟数其实比平时多，比例低是因为昨晚睡得久，多出来的是浅睡和 REM';
+      else if (bp != null && dp - bp >= 3 && bm - last.deep >= 8) cmp += '；分钟数其实比平时少，比例高是因为昨晚睡得短';
+      var part = function (v, col) { return v > 0 ? '<i style="width:' + (v / wAll * 100).toFixed(1) + '%;background:var(--' + col + ')"></i>' : ''; };
+      var key = function (name, v, col) { return '<span><i style="background:var(--' + col + ')"></i>' + name + ' <b>' + pc(v) + '%</b> ' + Math.round(v) + ' 分</span>'; };
+      stg = '<div class="stg"><div class="big">' + dp + '%<small>昨晚深睡 ' + Math.round(last.deep) + ' 分' + '</small></div>' +
+        '<p class="sub">占有分期睡眠的比例' + esc(cmp) + '。入睡后前 4 小时里有 ' + (last.f4 == null ? '–' : Math.round(last.f4)) + ' 分。</p>' +
+        '<div class="bar" role="img" aria-label="昨晚各睡眠阶段占比">' + part(last.deep, 'deep') + part(last.core, 'core') + part(last.rem, 'rem') + part(last.awake || 0, 'awake') + '</div>' +
+        '<div class="keys">' + key('深睡', last.deep, 'deep') + key('浅睡', last.core, 'core') + key('REM', last.rem, 'rem') + '<span><i style="background:var(--awake)"></i>清醒 <b>' + Math.round(last.awake || 0) + '</b> 分</span></div></div>';
+    } else stg = '<div class="stg"><p class="sub">昨晚没有分期数据，看不了深睡比例。确认手表整晚戴着并开了睡眠跟踪。</p></div>';
+    box.innerHTML = stg + '<p class="lead">' + esc(lead) + '</p><p>' + esc(v) + '</p><p class="do">' + esc(act) + '</p>' +
       '<div class="win">' +
       '<div><span>明早晒太阳</span><b>' + clock(lightFrom) + ' – ' + clock(lightFrom + 120) + '</b><span>这段时间的光把生物钟往前拨</span></div>' +
       '<div><span>咖啡因截止</span><b>' + clock(caf) + '</b><span>之后不喝咖啡、茶、功能饮料</span></div>' +
