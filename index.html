@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>睡眠节律跟踪</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="睡眠节律">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ECEEF5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1120" media="(prefers-color-scheme: dark)">
+<style>
+:root{
+  --bg:#ECEEF5; --surface:#F8F9FC; --ink:#171B2E; --muted:#5C6480; --line:#D3D8E6;
+  --deep:#2F3FA0; --core:#93A0E0; --rem:#D99A2B; --awake:#E0563F; --unspec:#B4B9C9;
+  --good:#1F8A6D; --bad:#C8452F; --accent:#2F3FA0; --on-accent:#fff;
+  --num:"Avenir Next","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --body:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1120; --surface:#161A2D; --ink:#E7E9F3; --muted:#8E96B4; --line:#2A3050;
+    --deep:#8090FF; --core:#3C4788; --rem:#E3AC45; --awake:#F0705A; --unspec:#4A5068;
+    --good:#4CC3A0; --bad:#F0705A; --accent:#8090FF; --on-accent:#0E1120;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1120; --surface:#161A2D; --ink:#E7E9F3; --muted:#8E96B4; --line:#2A3050;
+  --deep:#8090FF; --core:#3C4788; --rem:#E3AC45; --awake:#F0705A; --unspec:#4A5068;
+  --good:#4CC3A0; --bad:#F0705A; --accent:#8090FF; --on-accent:#0E1120;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6;-webkit-text-size-adjust:100%}
+main{max-width:860px;margin:0 auto;padding:20px 16px 56px}
+h1{font-family:var(--num);font-weight:700;font-size:1.75rem;line-height:1.15;margin:0;letter-spacing:-.01em}
+h2{font-family:var(--num);font-weight:600;font-size:1.15rem;margin:0 0 4px}
+p{margin:0}
+.sub{color:var(--muted);font-size:.87rem}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+section{margin-top:30px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+button,.btn{font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;max-width:100%}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#acto svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.8rem;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:12px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:.8rem;white-space:nowrap}
+td.n,th.n{text-align:right;font-family:var(--num);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.up{color:var(--good)} .down{color:var(--bad)} .flat{color:var(--muted)}
+.hint{display:block;color:var(--muted);font-size:.78rem;line-height:1.4}
+ul.flags{list-style:none;margin:0;padding:0}
+ul.flags li{padding:9px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:5.2em 1fr;gap:10px}
+ul.flags li:last-child{border-bottom:0}
+ul.flags b{font-family:var(--num);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.spark h3{font-size:.85rem;font-weight:500;color:var(--muted);margin:0}
+.spark .v{font-family:var(--num);font-size:1.4rem;font-weight:600;line-height:1.2}
+.spark svg{display:block;width:100%;height:auto;margin-top:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:.8rem;margin:2px 4px 2px 0}
+.tag button{border:0;padding:0 0 0 6px;color:var(--muted)}
+details summary{cursor:pointer;color:var(--muted)}
+ol.steps{margin:8px 0 0;padding-left:1.3em}
+#status{min-height:1.4em}
+.empty{padding:26px 10px;text-align:center;color:var(--muted)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>睡眠节律跟踪</h1>
+      <p class="sub" id="range"></p>
+    </div>
+    <div class="row">
+      <input type="file" id="file" accept=".zip,.xml,.txt,text/plain,application/zip" hidden>
+      <button class="primary" id="importBtn">导入</button>
+      <button id="pasteBtn">从剪贴板更新</button>
+    </div>
+  </header>
+  <p class="sub" id="status" role="status" aria-live="polite"></p>
+
+  <div id="app" hidden>
+    <section aria-labelledby="h-acto">
+      <div class="row" style="justify-content:space-between">
+        <h2 id="h-acto">每晚睡在哪个时段</h2>
+        <div class="row" id="spanBtns">
+          <button data-span="14" aria-pressed="false">14晚</button>
+          <button data-span="30" aria-pressed="true">30晚</button>
+          <button data-span="0" aria-pressed="false">全部</button>
+        </div>
+      </div>
+      <p class="sub">一行是一晚，横轴从傍晚18点到次日18点。竖线是你设定的起床时间，色块越整齐地贴着它，节律越稳。</p>
+      <div class="panel scroll" id="acto" style="margin-top:10px"></div>
+      <div class="legend">
+        <span><i style="background:var(--deep)"></i>深睡</span><span><i style="background:var(--core)"></i>浅睡</span>
+        <span><i style="background:var(--rem)"></i>REM</span><span><i style="background:var(--awake)"></i>清醒</span>
+        <span><i style="background:var(--unspec)"></i>未分期</span><span>行尾圆点＝当晚有记录</span>
+      </div>
+      <div class="row sub" style="margin-top:10px">
+        <label for="wake">目标起床时间</label><input type="time" id="wake" value="09:00">
+      </div>
+    </section>
+
+    <section aria-labelledby="h-cmp">
+      <h2 id="h-cmp">最近7晚和之前28晚相比</h2>
+      <p class="sub" id="cmpNote"></p>
+      <div class="panel scroll" style="margin-top:10px"><table id="cmp"></table></div>
+    </section>
+
+    <section aria-labelledby="h-flags">
+      <h2 id="h-flags">值得对一下的夜晚</h2>
+      <p class="sub">最近14晚里偏离你自己基线的地方。</p>
+      <div class="panel" style="margin-top:10px"><ul class="flags" id="flags"></ul></div>
+    </section>
+
+    <section aria-labelledby="h-log">
+      <h2 id="h-log">当晚吃了什么、做了什么</h2>
+      <p class="sub">一次只记一个变量，对比才有意义。</p>
+      <div class="panel" style="margin-top:10px">
+        <div class="row">
+          <label for="logNight" class="sub">哪一晚</label><select id="logNight"></select>
+        </div>
+        <div class="chips" id="presets" style="margin-top:10px"></div>
+        <div class="row" style="margin-top:10px">
+          <input id="logOther" placeholder="其他，比如：0:30 吃的" style="flex:1;min-width:160px">
+          <button class="primary" id="logSave">保存这晚的记录</button>
+        </div>
+        <div id="logList" style="margin-top:12px"></div>
+      </div>
+      <div class="panel scroll" style="margin-top:12px"><table id="tagCmp"></table></div>
+    </section>
+
+    <section aria-labelledby="h-trend">
+      <h2 id="h-trend">趋势</h2>
+      <p class="sub">点是每晚或每天的值，线是7日滑动中位数。</p>
+      <div class="grid" id="trends" style="margin-top:10px"></div>
+    </section>
+  </div>
+
+  <div id="emptyState" class="panel empty" hidden>
+    <p>还没有数据。点“导入”选一次 Apple 健康导出的 zip，或者在页面底部恢复一份备份。</p>
+  </div>
+
+  <section>
+    <details class="panel">
+      <summary>怎么更新数据、备份与恢复</summary>
+      <ol class="steps">
+        <li>日常更新：运行“睡眠更新”快捷指令，它把最近几天的样本写成一小段文本。回到这里点“从剪贴板更新”，或点“导入”选它存下的 sleep-feed.txt。</li>
+        <li>完整更新：iPhone“健康”里点头像，选“导出所有健康数据”，得到 zip 后点“导入”选它。步数、静坐时长和午后心率台阶只有这种方式才有。</li>
+        <li>所有文件只在这台手机上解析，应用不联网、不上传，只保存算出来的每晚摘要。</li>
+      </ol>
+      <p class="sub" style="margin-top:10px">手表的分期和血氧有误差，深睡平均会少算，单晚数字看方向不看分钟。这里的提示不是诊断。</p>
+      <p class="sub" style="margin-top:10px">清除 Safari 网站数据或删掉主屏幕图标会把记录一起清掉，隔一阵导出一份备份。</p>
+      <div class="row" style="margin-top:12px"><input type="file" id="restoreFile" accept=".json,application/json" hidden><button id="backupBtn">导出备份</button><button id="restoreBtn">恢复备份</button><button id="wipe">清空已保存的数据</button></div>
+    </details>
+  </section>
+</main>
+<script>!function(f){typeof module!='undefined'&&typeof exports=='object'?module.exports=f():typeof define!='undefined'&&define.amd?define(f):(typeof self!='undefined'?self:this).fflate=f()}(function(){var _e={};"use strict";var t=(typeof module!='undefined'&&typeof exports=='object'?function(_f){"use strict";var e,t=";var __w=require('worker_threads');__w.parentPort.on('message',function(m){onmessage({data:m})}),postMessage=function(m,t){__w.parentPort.postMessage(m,t)},close=process.exit;self=global";try{e=require("worker_threads").Worker}catch(e){}exports.default=e?function(r,n,o,a,s){var u=!1,i=new e(r+t,{eval:!0}).on("error",(function(e){return s(e,null)})).on("message",(function(e){return s(null,e)})).on("exit",(function(e){e&&!u&&s(Error("exited with code "+e),null)}));return i.postMessage(o,a),i.terminate=function(){return u=!0,e.prototype.terminate.call(i)},i}:function(e,t,r,n,o){setImmediate((function(){return o(Error("async operations unsupported - update to Node 12+ (or Node 10-11 with the --experimental-worker CLI flag)"),null)}));var a=function(){};return{terminate:a,postMessage:a}};return _f}:function(_f){"use strict";var e={};_f.default=function(r,t,s,a,n){var o=new Worker(e[t]||(e[t]=URL.createObjectURL(new Blob([r+';addEventListener("error",function(e){e=e.error;postMessage({$e$:[e.message,e.code,e.stack]})})'],{type:"text/javascript"}))));return o.onmessage=function(e){var r=e.data,t=r.$e$;if(t){var s=Error(t[0]);s.code=t[1],s.stack=t[2],n(s,null)}else n(null,r)},o.postMessage(s,a),o};return _f})({}),n=Uint8Array,r=Uint16Array,e=Int32Array,i=new n([0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0,0,0,0]),o=new n([0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,0,0]),s=new n([16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15]),a=function(t,n){for(var i=new r(31),o=0;o<31;++o)i[o]=n+=1<<t[o-1];var s=new e(i[30]);for(o=1;o<30;++o)for(var a=i[o];a<i[o+1];++a)s[a]=a-i[o]<<5|o;return{b:i,r:s}},u=a(i,2),h=u.b,f=u.r;h[28]=258,f[258]=28;for(var l=a(o,0),c=l.b,p=l.r,v=new r(32768),d=0;d<32768;++d){var g=(43690&d)>>1|(21845&d)<<1;v[d]=((65280&(g=(61680&(g=(52428&g)>>2|(13107&g)<<2))>>4|(3855&g)<<4))>>8|(255&g)<<8)>>1}var y=function(t,n,e){for(var i=t.length,o=0,s=new r(n);o<i;++o)t[o]&&++s[t[o]-1];var a,u=new r(n);for(o=1;o<n;++o)u[o]=u[o-1]+s[o-1]<<1;if(e){a=new r(1<<n);var h=15-n;for(o=0;o<i;++o)if(t[o])for(var f=o<<4|t[o],l=n-t[o],c=u[t[o]-1]++<<l,p=c|(1<<l)-1;c<=p;++c)a[v[c]>>h]=f}else for(a=new r(i),o=0;o<i;++o)t[o]&&(a[o]=v[u[t[o]-1]++]>>15-t[o]);return a},m=new n(288);for(d=0;d<144;++d)m[d]=8;for(d=144;d<256;++d)m[d]=9;for(d=256;d<280;++d)m[d]=7;for(d=280;d<288;++d)m[d]=8;var b=new n(32);for(d=0;d<32;++d)b[d]=5;var w=y(m,9,0),x=y(m,9,1),z=y(b,5,0),k=y(b,5,1),M=function(t){for(var n=t[0],r=1;r<t.length;++r)t[r]>n&&(n=t[r]);return n},S=function(t,n,r){var e=n/8|0;return(t[e]|t[e+1]<<8)>>(7&n)&r},A=function(t,n){var r=n/8|0;return(t[r]|t[r+1]<<8|t[r+2]<<16)>>(7&n)},T=function(t){return(t+7)/8|0},D=function(t,r,e){return(null==r||r<0)&&(r=0),(null==e||e>t.length)&&(e=t.length),new n(t.subarray(r,e))};_e.FlateErrorCode={UnexpectedEOF:0,InvalidBlockType:1,InvalidLengthLiteral:2,InvalidDistance:3,StreamFinished:4,NoStreamHandler:5,InvalidHeader:6,NoCallback:7,InvalidUTF8:8,ExtraFieldTooLong:9,InvalidDate:10,FilenameTooLong:11,StreamFinishing:12,InvalidZipData:13,UnknownCompressionMethod:14};var C=["unexpected EOF","invalid block type","invalid length/literal","invalid distance","stream finished","no stream handler",,"no callback","invalid UTF-8 data","extra field too long","date not in range 1980-2099","filename too long","stream finishing","invalid zip data"],I=function(t,n,r){var e=Error(n||C[t]);if(e.code=t,Error.captureStackTrace&&Error.captureStackTrace(e,I),!r)throw e;return e},U=function(t,r,e,a){var u=t.length,f=a?a.length:0;if(!u||r.f&&!r.l)return e||new n(0);var l=!e,p=l||2!=r.i,v=r.i;l&&(e=new n(3*u));var d=function(t){var r=e.length;if(t>r){var i=new n(Math.max(2*r,t));i.set(e),e=i}},g=r.f||0,m=r.p||0,b=r.b||0,w=r.l,z=r.d,C=r.m,U=r.n,F=8*u;do{if(!w){g=S(t,m,1);var E=S(t,m+1,3);if(m+=3,!E){var Z=t[(J=T(m)+4)-4]|t[J-3]<<8,q=J+Z;if(q>u){v&&I(0);break}p&&d(b+Z),e.set(t.subarray(J,q),b),r.b=b+=Z,r.p=m=8*q,r.f=g;continue}if(1==E)w=x,z=k,C=9,U=5;else if(2==E){var O=S(t,m,31)+257,G=S(t,m+10,15)+4,L=O+S(t,m+5,31)+1;m+=14;for(var H=new n(L),j=new n(19),N=0;N<G;++N)j[s[N]]=S(t,m+3*N,7);m+=3*G;var P=M(j),B=(1<<P)-1,Y=y(j,P,1);for(N=0;N<L;){var J,K=Y[S(t,m,B)];if(m+=15&K,(J=K>>4)<16)H[N++]=J;else{var Q=0,R=0;for(16==J?(R=3+S(t,m,3),m+=2,Q=H[N-1]):17==J?(R=3+S(t,m,7),m+=3):18==J&&(R=11+S(t,m,127),m+=7);R--;)H[N++]=Q}}var V=H.subarray(0,O),W=H.subarray(O);C=M(V),U=M(W),w=y(V,C,1),z=y(W,U,1)}else I(1);if(m>F){v&&I(0);break}}p&&d(b+131072);for(var X=(1<<C)-1,$=(1<<U)-1,_=m;;_=m){var tt=(Q=w[A(t,m)&X])>>4;if((m+=15&Q)>F){v&&I(0);break}if(Q||I(2),tt<256)e[b++]=tt;else{if(256==tt){_=m,w=null;break}var nt=tt-254;tt>264&&(nt=S(t,m,(1<<(it=i[N=tt-257]))-1)+h[N],m+=it);var rt=z[A(t,m)&$],et=rt>>4;if(rt||I(3),m+=15&rt,W=c[et],et>3){var it=o[et];W+=A(t,m)&(1<<it)-1,m+=it}if(m>F){v&&I(0);break}p&&d(b+131072);var ot=b+nt;if(b<W){var st=f-W,at=Math.min(W,ot);for(st+b<0&&I(3);b<at;++b)e[b]=a[st+b]}for(;b<ot;++b)e[b]=e[b-W]}}r.l=w,r.p=_,r.b=b,r.f=g,w&&(g=1,r.m=C,r.d=z,r.n=U)}while(!g);return b!=e.length&&l?D(e,0,b):e.subarray(0,b)},F=function(t,n,r){var e=n/8|0;t[e]|=r<<=7&n,t[e+1]|=r>>8},E=function(t,n,r){var e=n/8|0;t[e]|=r<<=7&n,t[e+1]|=r>>8,t[e+2]|=r>>16},Z=function(t,e){for(var i=[],o=0;o<t.length;++o)t[o]&&i.push({s:o,f:t[o]});var s=i.length,a=i.slice();if(!s)return{t:N,l:0};if(1==s){var u=new n(i[0].s+1);return u[i[0].s]=1,{t:u,l:1}}i.sort((function(t,n){return t.f-n.f})),i.push({s:-1,f:25001});var h=i[0],f=i[1],l=0,c=1,p=2;for(i[0]={s:-1,f:h.f+f.f,l:h,r:f};c!=s-1;)h=i[i[l].f<i[p].f?l++:p++],f=i[l!=c&&i[l].f<i[p].f?l++:p++],i[c++]={s:-1,f:h.f+f.f,l:h,r:f};var v=a[0].s;for(o=1;o<s;++o)a[o].s>v&&(v=a[o].s);var d=new r(v+1),g=q(i[c-1],d,0);if(g>e){o=0;var y=0,m=g-e,b=1<<m;for(a.sort((function(t,n){return d[n.s]-d[t.s]||t.f-n.f}));o<s;++o){var w=a[o].s;if(!(d[w]>e))break;y+=b-(1<<g-d[w]),d[w]=e}for(y>>=m;y>0;){var x=a[o].s;d[x]<e?y-=1<<e-d[x]++-1:++o}for(;o>=0&&y;--o){var z=a[o].s;d[z]==e&&(--d[z],++y)}g=e}return{t:new n(d),l:g}},q=function(t,n,r){return-1==t.s?Math.max(q(t.l,n,r+1),q(t.r,n,r+1)):n[t.s]=r},O=function(t){for(var n=t.length;n&&!t[--n];);for(var e=new r(++n),i=0,o=t[0],s=1,a=function(t){e[i++]=t},u=1;u<=n;++u)if(t[u]==o&&u!=n)++s;else{if(!o&&s>2){for(;s>138;s-=138)a(32754);s>2&&(a(s>10?s-11<<5|28690:s-3<<5|12305),s=0)}else if(s>3){for(a(o),--s;s>6;s-=6)a(8304);s>2&&(a(s-3<<5|8208),s=0)}for(;s--;)a(o);s=1,o=t[u]}return{c:e.subarray(0,i),n:n}},G=function(t,n){for(var r=0,e=0;e<n.length;++e)r+=t[e]*n[e];return r},L=function(t,n,r){var e=r.length,i=T(n+2);t[i]=255&e,t[i+1]=e>>8,t[i+2]=255^t[i],t[i+3]=255^t[i+1];for(var o=0;o<e;++o)t[i+o+4]=r[o];return 8*(i+4+e)},H=function(t,n,e,a,u,h,f,l,c,p,v){F(n,v++,e),++u[256];for(var d=Z(u,15),g=d.t,x=d.l,k=Z(h,15),M=k.t,S=k.l,A=O(g),T=A.c,D=A.n,C=O(M),I=C.c,U=C.n,q=new r(19),H=0;H<T.length;++H)++q[31&T[H]];for(H=0;H<I.length;++H)++q[31&I[H]];for(var j=Z(q,7),N=j.t,P=j.l,B=19;B>4&&!N[s[B-1]];--B);var Y,J,K,Q,R=p+5<<3,V=G(u,m)+G(h,b)+f,W=G(u,g)+G(h,M)+f+14+3*B+G(q,N)+2*q[16]+3*q[17]+7*q[18];if(c>=0&&R<=V&&R<=W)return L(n,v,t.subarray(c,c+p));if(F(n,v,1+(W<V)),v+=2,W<V){Y=y(g,x,0),J=g,K=y(M,S,0),Q=M;var X=y(N,P,0);for(F(n,v,D-257),F(n,v+5,U-1),F(n,v+10,B-4),v+=14,H=0;H<B;++H)F(n,v+3*H,N[s[H]]);v+=3*B;for(var $=[T,I],_=0;_<2;++_){var tt=$[_];for(H=0;H<tt.length;++H)F(n,v,X[rt=31&tt[H]]),v+=N[rt],rt>15&&(F(n,v,tt[H]>>5&127),v+=tt[H]>>12)}}else Y=w,J=m,K=z,Q=b;for(H=0;H<l;++H){var nt=a[H];if(nt>255){var rt;E(n,v,Y[257+(rt=nt>>18&31)]),v+=J[rt+257],rt>7&&(F(n,v,nt>>23&31),v+=i[rt]);var et=31&nt;E(n,v,K[et]),v+=Q[et],et>3&&(E(n,v,nt>>5&8191),v+=o[et])}else E(n,v,Y[nt]),v+=J[nt]}return E(n,v,Y[256]),v+J[256]},j=new e([65540,131080,131088,131104,262176,1048704,1048832,2114560,2117632]),N=new n(0),P=function(t,s,a,u,h,l){var c=l.z||t.length,v=new n(u+c+5*(1+Math.ceil(c/7e3))+h),d=v.subarray(u,v.length-h),g=l.l,y=7&(l.r||0);if(s){y&&(d[0]=l.r>>3);for(var m=j[s-1],b=m>>13,w=8191&m,x=(1<<a)-1,z=l.p||new r(32768),k=l.h||new r(x+1),M=Math.ceil(a/3),S=2*M,A=function(n){return(t[n]^t[n+1]<<M^t[n+2]<<S)&x},C=new e(25e3),I=new r(288),U=new r(32),F=0,E=0,Z=l.i||0,q=0,O=l.w||0,G=0;Z+2<c;++Z){var N=A(Z),P=32767&Z,B=k[N];if(z[P]=B,k[N]=P,O<=Z){var Y=c-Z;if((F>7e3||q>24576)&&(Y>423||!g)){y=H(t,d,0,C,I,U,E,q,G,Z-G,y),q=F=E=0,G=Z;for(var J=0;J<286;++J)I[J]=0;for(J=0;J<30;++J)U[J]=0}var K=2,Q=0,R=w,V=P-B&32767;if(Y>2&&N==A(Z-V))for(var W=Math.min(b,Y)-1,X=Math.min(32767,Z),$=Math.min(258,Y);V<=X&&--R&&P!=B;){if(t[Z+K]==t[Z+K-V]){for(var _=0;_<$&&t[Z+_]==t[Z+_-V];++_);if(_>K){if(K=_,Q=V,_>W)break;var tt=Math.min(V,_-2),nt=0;for(J=0;J<tt;++J){var rt=Z-V+J&32767,et=rt-z[rt]&32767;et>nt&&(nt=et,B=rt)}}}V+=(P=B)-(B=z[P])&32767}if(Q){C[q++]=268435456|f[K]<<18|p[Q];var it=31&f[K],ot=31&p[Q];E+=i[it]+o[ot],++I[257+it],++U[ot],O=Z+K,++F}else C[q++]=t[Z],++I[t[Z]]}}for(Z=Math.max(Z,O);Z<c;++Z)C[q++]=t[Z],++I[t[Z]];y=H(t,d,g,C,I,U,E,q,G,Z-G,y),g||(l.r=7&y|d[y/8|0]<<3,y-=7,l.h=k,l.p=z,l.i=Z,l.w=O)}else{for(Z=l.w||0;Z<c+g;Z+=65535){var st=Z+65535;st>=c&&(d[y/8|0]=g,st=c),y=L(d,y+1,t.subarray(Z,st))}l.i=c}return D(v,0,u+T(y)+h)},B=function(){for(var t=new Int32Array(256),n=0;n<256;++n){for(var r=n,e=9;--e;)r=(1&r&&-306674912)^r>>>1;t[n]=r}return t}(),Y=function(){var t=-1;return{p:function(n){for(var r=t,e=0;e<n.length;++e)r=B[255&r^n[e]]^r>>>8;t=r},d:function(){return~t}}},J=function(){var t=1,n=0;return{p:function(r){for(var e=t,i=n,o=0|r.length,s=0;s!=o;){for(var a=Math.min(s+2655,o);s<a;++s)i+=e+=r[s];e=(65535&e)+15*(e>>16),i=(65535&i)+15*(i>>16)}t=e,n=i},d:function(){return(255&(t%=65521))<<24|(65280&t)<<8|(255&(n%=65521))<<8|n>>8}}},K=function(t,r,e,i,o){if(!o&&(o={l:1},r.dictionary)){var s=r.dictionary.subarray(-32768),a=new n(s.length+t.length);a.set(s),a.set(t,s.length),t=a,o.w=s.length}return P(t,null==r.level?6:r.level,null==r.mem?o.l?Math.ceil(1.5*Math.max(8,Math.min(13,Math.log(t.length)))):20:12+r.mem,e,i,o)},Q=function(t,n){var r={};for(var e in t)r[e]=t[e];for(var e in n)r[e]=n[e];return r},R=function(t,n,r){for(var e=t(),i=""+t,o=i.slice(i.indexOf("[")+1,i.lastIndexOf("]")).replace(/\s+/g,"").split(","),s=0;s<e.length;++s){var a=e[s],u=o[s];if("function"==typeof a){n+=";"+u+"=";var h=""+a;if(a.prototype)if(-1!=h.indexOf("[native code]")){var f=h.indexOf(" ",8)+1;n+=h.slice(f,h.indexOf("(",f))}else for(var l in n+=h,a.prototype)n+=";"+u+".prototype."+l+"="+a.prototype[l];else n+=h}else r[u]=a}return n},V=[],W=function(t){var n=[];for(var r in t)t[r].buffer&&n.push((t[r]=new t[r].constructor(t[r])).buffer);return n},X=function(n,r,e,i){if(!V[e]){for(var o="",s={},a=n.length-1,u=0;u<a;++u)o=R(n[u],o,s);V[e]={c:R(n[a],o,s),e:s}}var h=Q({},V[e].e);return(0,t.default)(V[e].c+";onmessage=function(e){for(var k in e.data)self[k]=e.data[k];onmessage="+r+"}",e,h,W(h),i)},$=function(){return[n,r,e,i,o,s,h,c,x,k,v,C,y,M,S,A,T,D,I,U,Tt,it,ot]},_=function(){return[n,r,e,i,o,s,f,p,w,m,z,b,v,j,N,y,F,E,Z,q,O,G,L,H,T,D,P,K,kt,it]},tt=function(){return[pt,gt,ct,Y,B]},nt=function(){return[vt,dt]},rt=function(){return[yt,ct,J]},et=function(){return[mt]},it=function(t){return postMessage(t,[t.buffer])},ot=function(t){return t&&{out:t.size&&new n(t.size),dictionary:t.dictionary}},st=function(t,n,r,e,i,o){var s=X(r,e,i,(function(t,n){s.terminate(),o(t,n)}));return s.postMessage([t,n],n.consume?[t.buffer]:[]),function(){s.terminate()}},at=function(t){return t.ondata=function(t,n){return postMessage([t,n],[t.buffer])},function(n){n.data.length?(t.push(n.data[0],n.data[1]),postMessage([n.data[0].length])):t.flush()}},ut=function(t,n,r,e,i,o,s){var a,u=X(t,e,i,(function(t,r){t?(u.terminate(),n.ondata.call(n,t)):Array.isArray(r)?1==r.length?(n.queuedSize-=r[0],n.ondrain&&n.ondrain(r[0])):(r[1]&&u.terminate(),n.ondata.call(n,t,r[0],r[1])):s(r)}));u.postMessage(r),n.queuedSize=0,n.push=function(t,r){n.ondata||I(5),a&&n.ondata(I(4,0,1),null,!!r),n.queuedSize+=t.length,u.postMessage([t,a=r],[t.buffer])},n.terminate=function(){u.terminate()},o&&(n.flush=function(){u.postMessage([])})},ht=function(t,n){return t[n]|t[n+1]<<8},ft=function(t,n){return(t[n]|t[n+1]<<8|t[n+2]<<16|t[n+3]<<24)>>>0},lt=function(t,n){return ft(t,n)+4294967296*ft(t,n+4)},ct=function(t,n,r){for(;r;++n)t[n]=r,r>>>=8},pt=function(t,n){var r=n.filename;if(t[0]=31,t[1]=139,t[2]=8,t[8]=n.level<2?4:9==n.level?2:0,t[9]=3,0!=n.mtime&&ct(t,4,Math.floor(new Date(n.mtime||Date.now())/1e3)),r){t[3]=8;for(var e=0;e<=r.length;++e)t[e+10]=r.charCodeAt(e)}},vt=function(t){31==t[0]&&139==t[1]&&8==t[2]||I(6,"invalid gzip data");var n=t[3],r=10;4&n&&(r+=2+(t[10]|t[11]<<8));for(var e=(n>>3&1)+(n>>4&1);e>0;e-=!t[r++]);return r+(2&n)},dt=function(t){var n=t.length;return(t[n-4]|t[n-3]<<8|t[n-2]<<16|t[n-1]<<24)>>>0},gt=function(t){return 10+(t.filename?t.filename.length+1:0)},yt=function(t,n){var r=n.level,e=0==r?0:r<6?1:9==r?3:2;if(t[0]=120,t[1]=e<<6|(n.dictionary&&32),t[1]|=31-(t[0]<<8|t[1])%31,n.dictionary){var i=J();i.p(n.dictionary),ct(t,2,i.d())}},mt=function(t,n){return(8!=(15&t[0])||t[0]>>4>7||(t[0]<<8|t[1])%31)&&I(6,"invalid zlib data"),(t[1]>>5&1)==+!n&&I(6,"invalid zlib data: "+(32&t[1]?"need":"unexpected")+" dictionary"),2+(t[1]>>3&4)};function bt(t,n){return"function"==typeof t&&(n=t,t={}),this.ondata=n,t}var wt=function(){function t(t,r){if("function"==typeof t&&(r=t,t={}),this.ondata=r,this.o=t||{},this.s={l:0,i:32768,w:32768,z:32768},this.b=new n(98304),this.o.dictionary){var e=this.o.dictionary.subarray(-32768);this.b.set(e,32768-e.length),this.s.i=32768-e.length}}return t.prototype.p=function(t,n){this.ondata(K(t,this.o,0,0,this.s),n)},t.prototype.push=function(t,r){this.ondata||I(5),this.s.l&&I(4);var e=t.length+this.s.z;if(e>this.b.length){if(e>2*this.b.length-32768){var i=new n(-32768&e);i.set(this.b.subarray(0,this.s.z)),this.b=i}var o=this.b.length-this.s.z;this.b.set(t.subarray(0,o),this.s.z),this.s.z=this.b.length,this.p(this.b,!1),this.b.set(this.b.subarray(-32768)),this.b.set(t.subarray(o),32768),this.s.z=t.length-o+32768,this.s.i=32766,this.s.w=32768}else this.b.set(t,this.s.z),this.s.z+=t.length;this.s.l=1&r,(this.s.z>this.s.w+8191||r)&&(this.p(this.b,r||!1),this.s.w=this.s.i,this.s.i-=2)},t.prototype.flush=function(){this.ondata||I(5),this.s.l&&I(4),this.p(this.b,!1),this.s.w=this.s.i,this.s.i-=2},t}();_e.Deflate=wt;var xt=function(){return function(t,n){ut([_,function(){return[at,wt]}],this,bt.call(this,t,n),(function(t){var n=new wt(t.data);onmessage=at(n)}),6,1)}}();function zt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[_],(function(t){return it(kt(t.data[0],t.data[1]))}),0,r)}function kt(t,n){return K(t,n||{},0,0)}_e.AsyncDeflate=xt,_e.deflate=zt,_e.deflateSync=kt;var Mt=function(){function t(t,r){"function"==typeof t&&(r=t,t={}),this.ondata=r;var e=t&&t.dictionary&&t.dictionary.subarray(-32768);this.s={i:0,b:e?e.length:0},this.o=new n(32768),this.p=new n(0),e&&this.o.set(e)}return t.prototype.e=function(t){if(this.ondata||I(5),this.d&&I(4),this.p.length){if(t.length){var r=new n(this.p.length+t.length);r.set(this.p),r.set(t,this.p.length),this.p=r}}else this.p=t},t.prototype.c=function(t){this.s.i=+(this.d=t||!1);var n=this.s.b,r=U(this.p,this.s,this.o);this.ondata(D(r,n,this.s.b),this.d),this.o=D(r,this.s.b-32768),this.s.b=this.o.length,this.p=D(this.p,this.s.p/8|0),this.s.p&=7},t.prototype.push=function(t,n){this.e(t),this.c(n)},t}();_e.Inflate=Mt;var St=function(){return function(t,n){ut([$,function(){return[at,Mt]}],this,bt.call(this,t,n),(function(t){var n=new Mt(t.data);onmessage=at(n)}),7,0)}}();function At(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[$],(function(t){return it(Tt(t.data[0],ot(t.data[1])))}),1,r)}function Tt(t,n){return U(t,{i:2},n&&n.out,n&&n.dictionary)}_e.AsyncInflate=St,_e.inflate=At,_e.inflateSync=Tt;var Dt=function(){function t(t,n){this.c=Y(),this.l=0,this.v=1,wt.call(this,t,n)}return t.prototype.push=function(t,n){this.c.p(t),this.l+=t.length,wt.prototype.push.call(this,t,n)},t.prototype.p=function(t,n){var r=K(t,this.o,this.v&&gt(this.o),n&&8,this.s);this.v&&(pt(r,this.o),this.v=0),n&&(ct(r,r.length-8,this.c.d()),ct(r,r.length-4,this.l)),this.ondata(r,n)},t.prototype.flush=function(){wt.prototype.flush.call(this)},t}();_e.Gzip=Dt,_e.Compress=Dt;var Ct=function(){return function(t,n){ut([_,tt,function(){return[at,wt,Dt]}],this,bt.call(this,t,n),(function(t){var n=new Dt(t.data);onmessage=at(n)}),8,1)}}();function It(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[_,tt,function(){return[Ut]}],(function(t){return it(Ut(t.data[0],t.data[1]))}),2,r)}function Ut(t,n){n||(n={});var r=Y(),e=t.length;r.p(t);var i=K(t,n,gt(n),8),o=i.length;return pt(i,n),ct(i,o-8,r.d()),ct(i,o-4,e),i}_e.AsyncGzip=Ct,_e.AsyncCompress=Ct,_e.gzip=It,_e.compress=It,_e.gzipSync=Ut,_e.compressSync=Ut;var Ft=function(){function t(t,n){this.v=1,this.r=0,Mt.call(this,t,n)}return t.prototype.push=function(t,r){if(Mt.prototype.e.call(this,t),this.r+=t.length,this.v){var e=this.p.subarray(this.v-1),i=e.length>3?vt(e):4;if(i>e.length){if(!r)return}else this.v>1&&this.onmember&&this.onmember(this.r-e.length);this.p=e.subarray(i),this.v=0}Mt.prototype.c.call(this,r),!this.s.f||this.s.l||r||(this.v=T(this.s.p)+9,this.s={i:0},this.o=new n(0),this.push(new n(0),r))},t}();_e.Gunzip=Ft;var Et=function(){return function(t,n){var r=this;ut([$,nt,function(){return[at,Mt,Ft]}],this,bt.call(this,t,n),(function(t){var n=new Ft(t.data);n.onmember=function(t){return postMessage(t)},onmessage=at(n)}),9,0,(function(t){return r.onmember&&r.onmember(t)}))}}();function Zt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[$,nt,function(){return[qt]}],(function(t){return it(qt(t.data[0],t.data[1]))}),3,r)}function qt(t,r){var e=vt(t);return e+8>t.length&&I(6,"invalid gzip data"),U(t.subarray(e,-8),{i:2},r&&r.out||new n(dt(t)),r&&r.dictionary)}_e.AsyncGunzip=Et,_e.gunzip=Zt,_e.gunzipSync=qt;var Ot=function(){function t(t,n){this.c=J(),this.v=1,wt.call(this,t,n)}return t.prototype.push=function(t,n){this.c.p(t),wt.prototype.push.call(this,t,n)},t.prototype.p=function(t,n){var r=K(t,this.o,this.v&&(this.o.dictionary?6:2),n&&4,this.s);this.v&&(yt(r,this.o),this.v=0),n&&ct(r,r.length-4,this.c.d()),this.ondata(r,n)},t.prototype.flush=function(){wt.prototype.flush.call(this)},t}();_e.Zlib=Ot;var Gt=function(){return function(t,n){ut([_,rt,function(){return[at,wt,Ot]}],this,bt.call(this,t,n),(function(t){var n=new Ot(t.data);onmessage=at(n)}),10,1)}}();function Lt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[_,rt,function(){return[Ht]}],(function(t){return it(Ht(t.data[0],t.data[1]))}),4,r)}function Ht(t,n){n||(n={});var r=J();r.p(t);var e=K(t,n,n.dictionary?6:2,4);return yt(e,n),ct(e,e.length-4,r.d()),e}_e.AsyncZlib=Gt,_e.zlib=Lt,_e.zlibSync=Ht;var jt=function(){function t(t,n){Mt.call(this,t,n),this.v=t&&t.dictionary?2:1}return t.prototype.push=function(t,n){if(Mt.prototype.e.call(this,t),this.v){if(this.p.length<6&&!n)return;this.p=this.p.subarray(mt(this.p,this.v-1)),this.v=0}n&&(this.p.length<4&&I(6,"invalid zlib data"),this.p=this.p.subarray(0,-4)),Mt.prototype.c.call(this,n)},t}();_e.Unzlib=jt;var Nt=function(){return function(t,n){ut([$,et,function(){return[at,Mt,jt]}],this,bt.call(this,t,n),(function(t){var n=new jt(t.data);onmessage=at(n)}),11,0)}}();function Pt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),st(t,n,[$,et,function(){return[Bt]}],(function(t){return it(Bt(t.data[0],ot(t.data[1])))}),5,r)}function Bt(t,n){return U(t.subarray(mt(t,n&&n.dictionary),-4),{i:2},n&&n.out,n&&n.dictionary)}_e.AsyncUnzlib=Nt,_e.unzlib=Pt,_e.unzlibSync=Bt;var Yt=function(){function t(t,n){this.o=bt.call(this,t,n)||{},this.G=Ft,this.I=Mt,this.Z=jt}return t.prototype.i=function(){var t=this;this.s.ondata=function(n,r){t.ondata(n,r)}},t.prototype.push=function(t,r){if(this.ondata||I(5),this.s)this.s.push(t,r);else{if(this.p&&this.p.length){var e=new n(this.p.length+t.length);e.set(this.p),e.set(t,this.p.length)}else this.p=t;this.p.length>2&&(this.s=31==this.p[0]&&139==this.p[1]&&8==this.p[2]?new this.G(this.o):8!=(15&this.p[0])||this.p[0]>>4>7||(this.p[0]<<8|this.p[1])%31?new this.I(this.o):new this.Z(this.o),this.i(),this.s.push(this.p,r),this.p=null)}},t}();_e.Decompress=Yt;var Jt=function(){function t(t,n){Yt.call(this,t,n),this.queuedSize=0,this.G=Et,this.I=St,this.Z=Nt}return t.prototype.i=function(){var t=this;this.s.ondata=function(n,r,e){t.ondata(n,r,e)},this.s.ondrain=function(n){t.queuedSize-=n,t.ondrain&&t.ondrain(n)}},t.prototype.push=function(t,n){this.queuedSize+=t.length,Yt.prototype.push.call(this,t,n)},t}();function Kt(t,n,r){return r||(r=n,n={}),"function"!=typeof r&&I(7),31==t[0]&&139==t[1]&&8==t[2]?Zt(t,n,r):8!=(15&t[0])||t[0]>>4>7||(t[0]<<8|t[1])%31?At(t,n,r):Pt(t,n,r)}function Qt(t,n){return 31==t[0]&&139==t[1]&&8==t[2]?qt(t,n):8!=(15&t[0])||t[0]>>4>7||(t[0]<<8|t[1])%31?Tt(t,n):Bt(t,n)}_e.AsyncDecompress=Jt,_e.decompress=Kt,_e.decompressSync=Qt;var Rt=function(t,r,e,i){for(var o in t){var s=t[o],a=r+o,u=i;Array.isArray(s)&&(u=Q(i,s[1]),s=s[0]),s instanceof n?e[a]=[s,u]:(e[a+="/"]=[new n(0),u],Rt(s,a,e,i))}},Vt="undefined"!=typeof TextEncoder&&new TextEncoder,Wt="undefined"!=typeof TextDecoder&&new TextDecoder,Xt=0;try{Wt.decode(N,{stream:!0}),Xt=1}catch(t){}var $t=function(t){for(var n="",r=0;;){var e=t[r++],i=(e>127)+(e>223)+(e>239);if(r+i>t.length)return{s:n,r:D(t,r-1)};i?3==i?(e=((15&e)<<18|(63&t[r++])<<12|(63&t[r++])<<6|63&t[r++])-65536,n+=String.fromCharCode(55296|e>>10,56320|1023&e)):n+=String.fromCharCode(1&i?(31&e)<<6|63&t[r++]:(15&e)<<12|(63&t[r++])<<6|63&t[r++]):n+=String.fromCharCode(e)}},_t=function(){function t(t){this.ondata=t,Xt?this.t=new TextDecoder:this.p=N}return t.prototype.push=function(t,r){if(this.ondata||I(5),r=!!r,this.t)return this.ondata(this.t.decode(t,{stream:!0}),r),void(r&&(this.t.decode().length&&I(8),this.t=null));this.p||I(4);var e=new n(this.p.length+t.length);e.set(this.p),e.set(t,this.p.length);var i=$t(e),o=i.s,s=i.r;r?(s.length&&I(8),this.p=null):this.p=s,this.ondata(o,r)},t}();_e.DecodeUTF8=_t;var tn=function(){function t(t){this.ondata=t}return t.prototype.push=function(t,n){this.ondata||I(5),this.d&&I(4),this.ondata(nn(t),this.d=n||!1)},t}();function nn(t,r){if(r){for(var e=new n(t.length),i=0;i<t.length;++i)e[i]=t.charCodeAt(i);return e}if(Vt)return Vt.encode(t);var o=t.length,s=new n(t.length+(t.length>>1)),a=0,u=function(t){s[a++]=t};for(i=0;i<o;++i){if(a+5>s.length){var h=new n(a+8+(o-i<<1));h.set(s),s=h}var f=t.charCodeAt(i);f<128||r?u(f):f<2048?(u(192|f>>6),u(128|63&f)):f>55295&&f<57344?(u(240|(f=65536+(1047552&f)|1023&t.charCodeAt(++i))>>18),u(128|f>>12&63),u(128|f>>6&63),u(128|63&f)):(u(224|f>>12),u(128|f>>6&63),u(128|63&f))}return D(s,0,a)}function rn(t,n){if(n){for(var r="",e=0;e<t.length;e+=16384)r+=String.fromCharCode.apply(null,t.subarray(e,e+16384));return r}if(Wt)return Wt.decode(t);var i=$t(t),o=i.s;return(r=i.r).length&&I(8),o}_e.EncodeUTF8=tn,_e.strToU8=nn,_e.strFromU8=rn;var en=function(t){return 1==t?3:t<6?2:9==t?1:0},on=function(t,n){return n+30+ht(t,n+26)+ht(t,n+28)},sn=function(t,n,r){var e=ht(t,n+28),i=rn(t.subarray(n+46,n+46+e),!(2048&ht(t,n+8))),o=n+46+e,s=ft(t,n+20),a=r&&4294967295==s?an(t,o):[s,ft(t,n+24),ft(t,n+42)],u=a[0],h=a[1],f=a[2];return[ht(t,n+10),u,h,i,o+ht(t,n+30)+ht(t,n+32),f]},an=function(t,n){for(;1!=ht(t,n);n+=4+ht(t,n+2));return[lt(t,n+12),lt(t,n+4),lt(t,n+20)]},un=function(t){var n=0;if(t)for(var r in t){var e=t[r].length;e>65535&&I(9),n+=e+4}return n},hn=function(t,n,r,e,i,o,s,a){var u=e.length,h=r.extra,f=a&&a.length,l=un(h);ct(t,n,null!=s?33639248:67324752),n+=4,null!=s&&(t[n++]=20,t[n++]=r.os),t[n]=20,n+=2,t[n++]=r.flag<<1|(o<0&&8),t[n++]=i&&8,t[n++]=255&r.compression,t[n++]=r.compression>>8;var c=new Date(null==r.mtime?Date.now():r.mtime),p=c.getFullYear()-1980;if((p<0||p>119)&&I(10),ct(t,n,p<<25|c.getMonth()+1<<21|c.getDate()<<16|c.getHours()<<11|c.getMinutes()<<5|c.getSeconds()>>1),n+=4,-1!=o&&(ct(t,n,r.crc),ct(t,n+4,o<0?-o-2:o),ct(t,n+8,r.size)),ct(t,n+12,u),ct(t,n+14,l),n+=16,null!=s&&(ct(t,n,f),ct(t,n+6,r.attrs),ct(t,n+10,s),n+=14),t.set(e,n),n+=u,l)for(var v in h){var d=h[v],g=d.length;ct(t,n,+v),ct(t,n+2,g),t.set(d,n+4),n+=4+g}return f&&(t.set(a,n),n+=f),n},fn=function(t,n,r,e,i){ct(t,n,101010256),ct(t,n+8,r),ct(t,n+10,r),ct(t,n+12,e),ct(t,n+16,i)},ln=function(){function t(t){this.filename=t,this.c=Y(),this.size=0,this.compression=0}return t.prototype.process=function(t,n){this.ondata(null,t,n)},t.prototype.push=function(t,n){this.ondata||I(5),this.c.p(t),this.size+=t.length,n&&(this.crc=this.c.d()),this.process(t,n||!1)},t}();_e.ZipPassThrough=ln;var cn=function(){function t(t,n){var r=this;n||(n={}),ln.call(this,t),this.d=new wt(n,(function(t,n){r.ondata(null,t,n)})),this.compression=8,this.flag=en(n.level)}return t.prototype.process=function(t,n){try{this.d.push(t,n)}catch(t){this.ondata(t,null,n)}},t.prototype.push=function(t,n){ln.prototype.push.call(this,t,n)},t}();_e.ZipDeflate=cn;var pn=function(){function t(t,n){var r=this;n||(n={}),ln.call(this,t),this.d=new xt(n,(function(t,n,e){r.ondata(t,n,e)})),this.compression=8,this.flag=en(n.level),this.terminate=this.d.terminate}return t.prototype.process=function(t,n){this.d.push(t,n)},t.prototype.push=function(t,n){ln.prototype.push.call(this,t,n)},t}();_e.AsyncZipDeflate=pn;var vn=function(){function t(t){this.ondata=t,this.u=[],this.d=1}return t.prototype.add=function(t){var r=this;if(this.ondata||I(5),2&this.d)this.ondata(I(4+8*(1&this.d),0,1),null,!1);else{var e=nn(t.filename),i=e.length,o=t.comment,s=o&&nn(o),a=i!=t.filename.length||s&&o.length!=s.length,u=i+un(t.extra)+30;i>65535&&this.ondata(I(11,0,1),null,!1);var h=new n(u);hn(h,0,t,e,a,-1);var f=[h],l=function(){for(var t=0,n=f;t<n.length;t++)r.ondata(null,n[t],!1);f=[]},c=this.d;this.d=0;var p=this.u.length,v=Q(t,{f:e,u:a,o:s,t:function(){t.terminate&&t.terminate()},r:function(){if(l(),c){var t=r.u[p+1];t?t.r():r.d=1}c=1}}),d=0;t.ondata=function(e,i,o){if(e)r.ondata(e,i,o),r.terminate();else if(d+=i.length,f.push(i),o){var s=new n(16);ct(s,0,134695760),ct(s,4,t.crc),ct(s,8,d),ct(s,12,t.size),f.push(s),v.c=d,v.b=u+d+16,v.crc=t.crc,v.size=t.size,c&&v.r(),c=1}else c&&l()},this.u.push(v)}},t.prototype.end=function(){var t=this;2&this.d?this.ondata(I(4+8*(1&this.d),0,1),null,!0):(this.d?this.e():this.u.push({r:function(){1&t.d&&(t.u.splice(-1,1),t.e())},t:function(){}}),this.d=3)},t.prototype.e=function(){for(var t=0,r=0,e=0,i=0,o=this.u;i<o.length;i++)e+=46+(h=o[i]).f.length+un(h.extra)+(h.o?h.o.length:0);for(var s=new n(e+22),a=0,u=this.u;a<u.length;a++){var h;hn(s,t,h=u[a],h.f,h.u,-h.c-2,r,h.o),t+=46+h.f.length+un(h.extra)+(h.o?h.o.length:0),r+=h.b}fn(s,t,this.u.length,e,r),this.ondata(null,s,!0),this.d=2},t.prototype.terminate=function(){for(var t=0,n=this.u;t<n.length;t++)n[t].t();this.d=2},t}();function dn(t,r,e){e||(e=r,r={}),"function"!=typeof e&&I(7);var i={};Rt(t,"",i,r);var o=Object.keys(i),s=o.length,a=0,u=0,h=s,f=Array(s),l=[],c=function(){for(var t=0;t<l.length;++t)l[t]()},p=function(t,n){xn((function(){e(t,n)}))};xn((function(){p=e}));var v=function(){var t=new n(u+22),r=a,e=u-a;u=0;for(var i=0;i<h;++i){var o=f[i];try{var s=o.c.length;hn(t,u,o,o.f,o.u,s);var l=30+o.f.length+un(o.extra),c=u+l;t.set(o.c,c),hn(t,a,o,o.f,o.u,s,u,o.m),a+=16+l+(o.m?o.m.length:0),u=c+s}catch(t){return p(t,null)}}fn(t,a,f.length,e,r),p(null,t)};s||v();for(var d=function(t){var n=o[t],r=i[n],e=r[0],h=r[1],d=Y(),g=e.length;d.p(e);var y=nn(n),m=y.length,b=h.comment,w=b&&nn(b),x=w&&w.length,z=un(h.extra),k=0==h.level?0:8,M=function(r,e){if(r)c(),p(r,null);else{var i=e.length;f[t]=Q(h,{size:g,crc:d.d(),c:e,f:y,m:w,u:m!=n.length||w&&b.length!=x,compression:k}),a+=30+m+z+i,u+=76+2*(m+z)+(x||0)+i,--s||v()}};if(m>65535&&M(I(11,0,1),null),k)if(g<16e4)try{M(null,kt(e,h))}catch(t){M(t,null)}else l.push(zt(e,h,M));else M(null,e)},g=0;g<h;++g)d(g);return c}function gn(t,r){r||(r={});var e={},i=[];Rt(t,"",e,r);var o=0,s=0;for(var a in e){var u=e[a],h=u[0],f=u[1],l=0==f.level?0:8,c=(M=nn(a)).length,p=f.comment,v=p&&nn(p),d=v&&v.length,g=un(f.extra);c>65535&&I(11);var y=l?kt(h,f):h,m=y.length,b=Y();b.p(h),i.push(Q(f,{size:h.length,crc:b.d(),c:y,f:M,m:v,u:c!=a.length||v&&p.length!=d,o:o,compression:l})),o+=30+c+g+m,s+=76+2*(c+g)+(d||0)+m}for(var w=new n(s+22),x=o,z=s-o,k=0;k<i.length;++k){var M;hn(w,(M=i[k]).o,M,M.f,M.u,M.c.length);var S=30+M.f.length+un(M.extra);w.set(M.c,M.o+S),hn(w,o,M,M.f,M.u,M.c.length,M.o,M.m),o+=16+S+(M.m?M.m.length:0)}return fn(w,o,i.length,z,x),w}_e.Zip=vn,_e.zip=dn,_e.zipSync=gn;var yn=function(){function t(){}return t.prototype.push=function(t,n){this.ondata(null,t,n)},t.compression=0,t}();_e.UnzipPassThrough=yn;var mn=function(){function t(){var t=this;this.i=new Mt((function(n,r){t.ondata(null,n,r)}))}return t.prototype.push=function(t,n){try{this.i.push(t,n)}catch(t){this.ondata(t,null,n)}},t.compression=8,t}();_e.UnzipInflate=mn;var bn=function(){function t(t,n){var r=this;n<32e4?this.i=new Mt((function(t,n){r.ondata(null,t,n)})):(this.i=new St((function(t,n,e){r.ondata(t,n,e)})),this.terminate=this.i.terminate)}return t.prototype.push=function(t,n){this.i.terminate&&(t=D(t,0)),this.i.push(t,n)},t.compression=8,t}();_e.AsyncUnzipInflate=bn;var wn=function(){function t(t){this.onfile=t,this.k=[],this.o={0:yn},this.p=N}return t.prototype.push=function(t,r){var e=this;if(this.onfile||I(5),this.p||I(4),this.c>0){var i=Math.min(this.c,t.length),o=t.subarray(0,i);if(this.c-=i,this.d?this.d.push(o,!this.c):this.k[0].push(o),(t=t.subarray(i)).length)return this.push(t,r)}else{var s=0,a=0,u=void 0,h=void 0;this.p.length?t.length?((h=new n(this.p.length+t.length)).set(this.p),h.set(t,this.p.length)):h=this.p:h=t;for(var f=h.length,l=this.c,c=l&&this.d,p=function(){var t,n=ft(h,a);if(67324752==n){s=1,u=a,v.d=null,v.c=0;var r=ht(h,a+6),i=ht(h,a+8),o=2048&r,c=8&r,p=ht(h,a+26),d=ht(h,a+28);if(f>a+30+p+d){var g=[];v.k.unshift(g),s=2;var y,m=ft(h,a+18),b=ft(h,a+22),w=rn(h.subarray(a+30,a+=30+p),!o);4294967295==m?(t=c?[-2]:an(h,a),m=t[0],b=t[1]):c&&(m=-1),a+=d,v.c=m;var x={name:w,compression:i,start:function(){if(x.ondata||I(5),m){var t=e.o[i];t||x.ondata(I(14,"unknown compression type "+i,1),null,!1),(y=m<0?new t(w):new t(w,m,b)).ondata=function(t,n,r){x.ondata(t,n,r)};for(var n=0,r=g;n<r.length;n++)y.push(r[n],!1);e.k[0]==g&&e.c?e.d=y:y.push(N,!0)}else x.ondata(null,N,!0)},terminate:function(){y&&y.terminate&&y.terminate()}};m>=0&&(x.size=m,x.originalSize=b),v.onfile(x)}return"break"}if(l){if(134695760==n)return u=a+=12+(-2==l&&8),s=3,v.c=0,"break";if(33639248==n)return u=a-=4,s=3,v.c=0,"break"}},v=this;a<f-4&&"break"!==p();++a);if(this.p=N,l<0){var d=h.subarray(0,s?u-12-(-2==l&&8)-(134695760==ft(h,u-16)&&4):a);c?c.push(d,!!s):this.k[+(2==s)].push(d)}if(2&s)return this.push(h.subarray(a),r);this.p=h.subarray(a)}r&&(this.c&&I(13),this.p=null)},t.prototype.register=function(t){this.o[t.compression]=t},t}();_e.Unzip=wn;var xn="function"==typeof queueMicrotask?queueMicrotask:"function"==typeof setTimeout?setTimeout:function(t){t()};function zn(t,r,e){e||(e=r,r={}),"function"!=typeof e&&I(7);var i=[],o=function(){for(var t=0;t<i.length;++t)i[t]()},s={},a=function(t,n){xn((function(){e(t,n)}))};xn((function(){a=e}));for(var u=t.length-22;101010256!=ft(t,u);--u)if(!u||t.length-u>65558)return a(I(13,0,1),null),o;var h=ht(t,u+8);if(h){var f=h,l=ft(t,u+16),c=4294967295==l||65535==f;if(c){var p=ft(t,u-12);(c=101075792==ft(t,p))&&(f=h=ft(t,p+32),l=ft(t,p+48))}for(var v=r&&r.filter,d=function(r){var e=sn(t,l,c),u=e[0],f=e[1],p=e[2],d=e[3],g=e[4],y=on(t,e[5]);l=g;var m=function(t,n){t?(o(),a(t,null)):(n&&(s[d]=n),--h||a(null,s))};if(!v||v({name:d,size:f,originalSize:p,compression:u}))if(u)if(8==u){var b=t.subarray(y,y+f);if(p<524288||f>.8*p)try{m(null,Tt(b,{out:new n(p)}))}catch(t){m(t,null)}else i.push(At(b,{size:p},m))}else m(I(14,"unknown compression type "+u,1),null);else m(null,D(t,y,y+f));else m(null,null)},g=0;g<f;++g)d()}else a(null,{});return o}function kn(t,r){for(var e={},i=t.length-22;101010256!=ft(t,i);--i)(!i||t.length-i>65558)&&I(13);var o=ht(t,i+8);if(!o)return{};var s=ft(t,i+16),a=4294967295==s||65535==o;if(a){var u=ft(t,i-12);(a=101075792==ft(t,u))&&(o=ft(t,u+32),s=ft(t,u+48))}for(var h=r&&r.filter,f=0;f<o;++f){var l=sn(t,s,a),c=l[0],p=l[1],v=l[2],d=l[3],g=l[4],y=on(t,l[5]);s=g,h&&!h({name:d,size:p,originalSize:v,compression:c})||(c?8==c?e[d]=Tt(t.subarray(y,y+p),{out:new n(v)}):I(14,"unknown compression type "+c):e[d]=D(t,y,y+p))}return e}_e.unzip=zn,_e.unzipSync=kn;return _e});</script>
+<script>
+/* ===== core: parse Apple Health export lines and derive nightly / daily summaries ===== */
+var HCore = (function () {
+  var P = 'HKQuantityTypeIdentifier', C = 'HKCategoryTypeIdentifier';
+  var WANT = {};
+  ['HeartRate', 'RespiratoryRate', 'OxygenSaturation', 'HeartRateVariabilitySDNN', 'RestingHeartRate',
+    'StepCount', 'TimeInDaylight', 'AppleExerciseTime', 'AppleSleepingBreathingDisturbances',
+    'AppleSleepingWristTemperature', 'VO2Max'].forEach(function (k) { WANT[P + k] = k; });
+  WANT[C + 'SleepAnalysis'] = 'Sleep';
+
+  function attr(line, name) {
+    var k = ' ' + name + '="', i = line.indexOf(k);
+    if (i < 0) return null;
+    i += k.length;
+    return line.substring(i, line.indexOf('"', i));
+  }
+  // wall-clock minutes since 2000-01-01, ignoring the UTC offset (times are local to where they were recorded)
+  function tmin(s) {
+    if (!s || s.length < 19) return NaN;
+    return Date.UTC(+s.substr(0, 4), +s.substr(5, 2) - 1, +s.substr(8, 2), +s.substr(11, 2), +s.substr(14, 2), +s.substr(17, 2)) / 60000 - 15778080;
+  }
+  function dayKey(m) { // minutes -> 'YYYY-MM-DD'
+    var d = new Date((m + 15778080) * 60000);
+    return d.toISOString().substr(0, 10);
+  }
+  function dayStart(key) { return tmin(key + ' 00:00:00'); }
+
+  function createParser() {
+    var raw = { sleep: [], hr: [], rr: [], ox: [], hrv: [], rhr: [], bd: [], wt: [], vo2: [], steps: {}, dl: {}, dlAm: {}, ex: {}, n: 0, last: 0, hasWatchSleep: false };
+    var pendingHR = null;
+    function add(map, key, v) { map[key] = (map[key] || 0) + v; }
+    function pushLine(line) {
+      if (pendingHR) {
+        if (line.indexOf('HeartRateMotionContext') > 0) { pendingHR[2] = +attr(line, 'value'); return; }
+        if (line.indexOf('</Record') >= 0) { pendingHR = null; return; }
+      }
+      var i = line.indexOf('<Record type="');
+      if (i < 0) return;
+      var j = i + 14, type = line.substring(j, line.indexOf('"', j)), k = WANT[type];
+      if (!k) return;
+      var st = tmin(attr(line, 'startDate')), val = attr(line, 'value'), src = attr(line, 'sourceName') || '';
+      if (isNaN(st)) return;
+      raw.n++; if (st > raw.last) raw.last = st;
+      var watch = src.indexOf('Watch') >= 0;
+      switch (k) {
+        case 'Sleep':
+          var code = val.indexOf('Core') > 0 ? 0 : val.indexOf('Deep') > 0 ? 1 : val.indexOf('REM') > 0 ? 2 : val.indexOf('Awake') > 0 ? 3 : val.indexOf('InBed') > 0 ? -1 : 4;
+          if (code < 0) return;
+          if (watch) raw.hasWatchSleep = true;
+          raw.sleep.push([st, tmin(attr(line, 'endDate')), code, watch ? 1 : 0]);
+          break;
+        case 'HeartRate':
+          var rec = [st, +val, -1]; raw.hr.push(rec);
+          if (line.indexOf('/>') < 0) pendingHR = rec;
+          break;
+        case 'RespiratoryRate': raw.rr.push([st, +val]); break;
+        case 'OxygenSaturation': raw.ox.push([st, +val * (+val <= 1 ? 100 : 1)]); break;
+        case 'HeartRateVariabilitySDNN': raw.hrv.push([st, +val]); break;
+        case 'RestingHeartRate': raw.rhr.push([st, +val]); break;
+        case 'AppleSleepingBreathingDisturbances': raw.bd.push([st, +val]); break;
+        case 'AppleSleepingWristTemperature': raw.wt.push([st, +val]); break;
+        case 'VO2Max': raw.vo2.push([st, +val]); break;
+        case 'StepCount': if (watch) add(raw.steps, Math.floor(st / 60), +val); break; // hourly buckets
+        case 'TimeInDaylight':
+          var dk = dayKey(st); add(raw.dl, dk, +val);
+          if (((st % 1440) + 1440) % 1440 < 660) add(raw.dlAm, dk, +val);
+          break;
+        case 'AppleExerciseTime': add(raw.ex, dayKey(st), +val); break;
+      }
+    }
+    return { pushLine: pushLine, raw: raw };
+  }
+
+
+  /* ---- text feed written by an iOS Shortcut (see README): "#name" header, then one value per line ---- */
+  function fdate(s) {
+    s = (s || '').trim(); if (!s) return NaN;
+    var m = s.match(/^(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})[日T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return NaN;
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)) / 60000 - 15778080;
+  }
+  function fnum(s) { var m = (s || '').replace(/,/g, '').match(/-?\d+(\.\d+)?/); return m ? +m[0] : NaN; }
+  function stage(s) {
+    s = s || '';
+    if (/床|in\s*bed/i.test(s)) return -1;
+    if (/深|deep/i.test(s)) return 1;
+    if (/rem|动眼|動眼/i.test(s)) return 2;
+    if (/核心|core/i.test(s)) return 0;
+    if (/清醒|awake/i.test(s)) return 3;
+    return 4;
+  }
+  function parseFeed(text) {
+    var sec = {}, cur = null;
+    text.split(/\r?\n/).forEach(function (l) {
+      if (l.charAt(0) === '#') { cur = l.substring(1).trim().toLowerCase(); sec[cur] = []; }
+      else if (cur && l.trim()) sec[cur].push(l);
+    });
+    var raw = createParser().raw, bad = 0, have = {};
+    function series(name, target, conv) {
+      var st = sec[name], vv = sec[name + '_val']; if (!st || !vv) return;
+      have[name] = 1;
+      for (var i = 0; i < Math.min(st.length, vv.length); i++) { var t = fdate(st[i]), v = fnum(vv[i]); if (isNaN(t) || isNaN(v)) { bad++; continue; } target.push([t, conv ? conv(v) : v]); if (t > raw.last) raw.last = t; raw.n++; }
+    }
+    var ss = sec.sleep, se = sec.sleep_end, sv = sec.sleep_val, segs = [];
+    if (ss && se && sv) {
+      have.sleep = 1;
+      for (var i = 0; i < Math.min(ss.length, se.length, sv.length); i++) {
+        var a = fdate(ss[i]), b = fdate(se[i]), c = stage(sv[i]);
+        if (isNaN(a) || isNaN(b) || b <= a) { bad++; continue; }
+        if (c < 0) continue; var w = sec.sleep_src && /watch/i.test(sec.sleep_src[i] || '') ? 1 : 0; if (w) raw.hasWatchSleep = true;
+        segs.push([a, b, c, w]); if (b > raw.last) raw.last = b; raw.n++;
+      }
+      // several apps write overlapping sleep; keep staged samples and drop unstaged ones that sit on top of them
+      var staged = segs.filter(function (s) { return s[2] !== 4; }).sort(function (x, y) { return x[0] - y[0]; });
+      raw.sleep = segs.filter(function (s) {
+        if (s[2] !== 4) return true; var ov = 0;
+        for (var k = 0; k < staged.length; k++) { var o = Math.min(s[1], staged[k][1]) - Math.max(s[0], staged[k][0]); if (o > 0) ov += o; }
+        return ov < (s[1] - s[0]) * 0.3;
+      });
+    }
+    series('hr', raw.hr); series('rr', raw.rr); series('hrv', raw.hrv); series('rhr', raw.rhr);
+    series('ox', raw.ox, function (v) { return v <= 1 ? v * 100 : v; });
+    raw.hr.forEach(function (r) { r.push(-1); });
+    if (sec.daylight && sec.daylight_val) {
+      have.daylight = 1;
+      for (var j = 0; j < Math.min(sec.daylight.length, sec.daylight_val.length); j++) {
+        var t = fdate(sec.daylight[j]), v = fnum(sec.daylight_val[j]); if (isNaN(t) || isNaN(v)) { bad++; continue; }
+        var dk = dayKey(t); raw.dl[dk] = (raw.dl[dk] || 0) + v; if (((t % 1440) + 1440) % 1440 < 660) raw.dlAm[dk] = (raw.dlAm[dk] || 0) + v;
+      }
+    }
+    return { raw: raw, bad: bad, have: have, sections: Object.keys(sec) };
+  }
+
+  function median(a) { if (!a.length) return null; var b = a.slice().sort(function (x, y) { return x - y; }), n = b.length; return n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2; }
+  function mean(a) { if (!a.length) return null; var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s / a.length; }
+  function sd(a) { if (a.length < 2) return null; var m = mean(a), s = 0; for (var i = 0; i < a.length; i++) s += (a[i] - m) * (a[i] - m); return Math.sqrt(s / (a.length - 1)); }
+  function r1(x) { return x == null ? null : Math.round(x * 10) / 10; }
+  function r0(x) { return x == null ? null : Math.round(x); }
+
+  function analyze(raw) {
+    var sleep = raw.sleep.filter(function (s) { return raw.hasWatchSleep ? s[3] === 1 : true; })
+      .sort(function (a, b) { return a[0] - b[0]; });
+    var by = {};
+    sleep.forEach(function (s) { var k = dayKey(s[0] - 1080); (by[k] = by[k] || []).push(s); });
+    ['hr', 'rr', 'ox', 'hrv', 'rhr', 'bd', 'wt'].forEach(function (k) { raw[k].sort(function (a, b) { return a[0] - b[0]; }); });
+    function within(arr, a, b) { // binary search slice
+      var lo = 0, hi = arr.length;
+      while (lo < hi) { var mid = (lo + hi) >> 1; if (arr[mid][0] < a) lo = mid + 1; else hi = mid; }
+      var out = []; for (var i = lo; i < arr.length && arr[i][0] <= b; i++) out.push(arr[i][1]);
+      return out;
+    }
+    var nights = [];
+    Object.keys(by).sort().forEach(function (key) {
+      var segs = by[key], base = dayStart(key) + 1080; // 18:00 of the evening
+      var blocks = [], cur = null;
+      segs.forEach(function (s) {
+        if (!cur || s[0] - cur.e > 60) { cur = { s: s[0], e: s[1], segs: [] }; blocks.push(cur); }
+        cur.segs.push(s); if (s[1] > cur.e) cur.e = s[1];
+      });
+      blocks.forEach(function (b) { var tod = ((b.s % 1440) + 1440) % 1440; b.nap = tod >= 540 && tod < 1170; });
+      var noct = blocks.filter(function (b) { return !b.nap; });
+      if (!noct.length) { // e.g. slept only in daytime: treat the longest block as the main sleep
+        var lb = blocks.slice().sort(function (a, b) { return (b.e - b.s) - (a.e - a.s); })[0]; lb.nap = false; noct = [lb];
+      }
+      var on = noct[0].s, off = noct[noct.length - 1].e;
+      var m = [0, 0, 0, 0, 0], nap = 0, f4 = 0, gap = 0, hr = [], rr = [], ox = [], hv = [];
+      for (var i = 1; i < noct.length; i++) gap = Math.max(gap, noct[i].s - noct[i - 1].e);
+      blocks.forEach(function (b) {
+        b.segs.forEach(function (s) {
+          var d = s[1] - s[0];
+          if (b.nap) { if (s[2] !== 3) nap += d; return; }
+          m[s[2]] += d;
+          if (s[2] === 3 && d > gap) gap = d;
+          if (s[2] === 1 && s[0] < on + 240) f4 += Math.min(s[1], on + 240) - s[0];
+        });
+        if (!b.nap) { hr = hr.concat(within(raw.hr, b.s, b.e)); rr = rr.concat(within(raw.rr, b.s, b.e)); ox = ox.concat(within(raw.ox, b.s, b.e)); hv = hv.concat(within(raw.hrv, b.s, b.e)); }
+      });
+      var tst = m[0] + m[1] + m[2] + m[4];
+      if (tst < 30) return;
+      var staged = m[1] + m[2] > 0;
+      var bd = within(raw.bd, base, base + 1440), wt = within(raw.wt, base + 300, base + 1500);
+      nights.push({
+        d: key, on: r0(on - base), off: r0(off - base), tst: r0(tst), core: r0(m[0]), deep: staged ? r0(m[1]) : null, rem: staged ? r0(m[2]) : null,
+        awake: r0(m[3]), unspec: r0(m[4]), f4: staged ? r0(f4) : null, gap: r0(gap), split: gap >= 45 ? 1 : 0, nb: noct.length, nap: r0(nap),
+        hr: r1(mean(hr)), hrMin: hr.length ? Math.min.apply(null, hr) : null, rr: r1(mean(rr)), ox: r1(mean(ox)), oxMin: ox.length ? Math.min.apply(null, ox) : null,
+        hrv: r0(mean(hv)), bd: bd.length ? r1(bd[bd.length - 1]) : null, wt: wt.length ? Math.round(wt[wt.length - 1] * 100) / 100 : null,
+        segs: segs.map(function (s) { return [r0(s[0] - base), Math.max(1, r0(s[1] - s[0])), s[2]]; })
+      });
+    });
+
+    // ---- daily ----
+    var dset = {};
+    Object.keys(raw.steps).forEach(function (h) { dset[dayKey(h * 60)] = 1; });
+    Object.keys(raw.dl).forEach(function (k) { dset[k] = 1; });
+    raw.rhr.forEach(function (r) { dset[dayKey(r[0])] = 1; });
+    var sedAm = {}, sedPm = {};
+    raw.hr.forEach(function (r) {
+      if (r[2] !== 1) return; var tod = ((r[0] % 1440) + 1440) % 1440, k = dayKey(r[0]);
+      if (tod >= 600 && tod < 720) (sedAm[k] = sedAm[k] || []).push(r[1]);
+      else if (tod >= 720 && tod < 1200) (sedPm[k] = sedPm[k] || []).push(r[1]);
+    });
+    var rhr = {}; raw.rhr.forEach(function (r) { rhr[dayKey(r[0])] = r[1]; });
+    var days = Object.keys(dset).sort().map(function (k) {
+      var h0 = dayStart(k) / 60, steps = 0, run = 0, best = 0, any = false;
+      for (var h = 0; h < 24; h++) {
+        var v = raw.steps[h0 + h] || 0; steps += v; if (raw.steps[h0 + h] != null) any = true;
+        if (h >= 10 && h < 23) { if (v < 100) { run++; if (run > best) best = run; } else run = 0; }
+      }
+      return { d: k, steps: any ? r0(steps) : null, sed: any ? best : null, ex: r0(raw.ex[k] || 0), dl: r0(raw.dl[k] || 0), dlAm: r0(raw.dlAm[k] || 0),
+        rhr: rhr[k] || null, hrAm: r0(median(sedAm[k] || [])), hrPm: r0(median(sedPm[k] || [])) };
+    });
+    var vo2 = raw.vo2.map(function (v) { return [dayKey(v[0]), r1(v[1])]; });
+    return { nights: nights, days: days, vo2: vo2, last: raw.last ? dayKey(raw.last) : null, records: raw.n };
+  }
+
+  return { createParser: createParser, parseFeed: parseFeed, analyze: analyze, median: median, mean: mean, sd: sd, tmin: tmin, dayKey: dayKey };
+})();
+if (typeof module !== 'undefined') module.exports = HCore;
+
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var S = { nights: {}, days: {}, tags: {}, settings: { wake: 540 }, vo2: [] };
+  var span = 30, db = null, LS = 'sleep-rhythm-v1';
+  var PRESETS = ['甘氨酸 3g', '甘氨酸镁', '苏糖酸镁', '14点后喝了咖啡', '喝酒', '醒后晒了太阳', '按点起床'];
+  var picked = {};
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function status(t) { $('status').textContent = t || ''; }
+
+  /* ---------- storage: this browser only ---------- */
+  function loadAll() {
+    try { var raw = localStorage.getItem(LS); if (raw) { var o = JSON.parse(raw); S.nights = o.nights || {}; S.days = o.days || {}; S.tags = o.tags || {}; S.settings = o.settings || S.settings; S.vo2 = o.vo2 || []; } } catch (e) { }
+    return Promise.resolve();
+  }
+  function saveLocal() { try { localStorage.setItem(LS, JSON.stringify(S)); return true; } catch (e) { return false; } }
+  function saveMonths() { return Promise.resolve(saveLocal()); }
+  function saveTags() { if (!saveLocal()) status('没能保存：浏览器存储不可用，不要用无痕模式。'); return Promise.resolve(); }
+  function saveSettings() { saveLocal(); return Promise.resolve(); }
+
+  /* ---------- small text feed from the Shortcut ---------- */
+  async function importFeed(text) {
+    var f = HCore.parseFeed(text);
+    if (!f.have.sleep) throw new Error('文本里没找到 #sleep、#sleep_end、#sleep_val 这三段，对照说明检查快捷指令里的“文本”那一步。');
+    if (!f.raw.sleep.length) throw new Error(f.bad ? '日期读不出来。把快捷指令里每个日期的格式改成“自定”，填 yyyy-MM-dd HH:mm:ss。' : '这段时间里没有睡眠样本。');
+    var out = HCore.analyze(f.raw), added = 0, n = 0;
+    out.nights.forEach(function (x, i) {
+      if (i === 0 && S.nights[x.d]) return; // the oldest night in the window is usually cut off at the start
+      if (!S.nights[x.d]) added++; S.nights[x.d] = x; n++;
+    });
+    out.days.forEach(function (d, i) {
+      if (i === 0 && S.days[d.d]) return;
+      var cur = S.days[d.d] || { d: d.d, steps: null, sed: null, ex: null, dl: null, dlAm: null, rhr: null, hrAm: null, hrPm: null };
+      if (f.have.daylight) { cur.dl = d.dl; cur.dlAm = d.dlAm; }
+      if (d.rhr != null) cur.rhr = d.rhr;
+      S.days[d.d] = cur;
+    });
+    var ok = saveLocal(); render();
+    status('已更新 ' + n + ' 晚，其中新增 ' + added + ' 晚，数据到 ' + out.last + '。' + (f.bad ? ' 有 ' + f.bad + ' 行没读懂，已跳过。' : '') + (ok ? '' : ' 但没能存下来：浏览器存储不可用。'));
+  }
+
+  /* ---------- import ---------- */
+  function wanted(name) { var n = name.toLowerCase(); return /\.xml$/.test(n) && n.indexOf('cda') < 0 && n.indexOf('electrocardiogram') < 0 && n.indexOf('workout-route') < 0; }
+  async function importFile(file) {
+    if (/\.txt$/i.test(file.name) || file.size < 3e6 && !/\.(zip|xml)$/i.test(file.name)) { status('正在读取…'); return importFeed(await file.text()); }
+    var parser = HCore.createParser(), dec = new TextDecoder('utf-8'), carry = '', total = file.size, done = 0, found = false, err = null;
+    function feed(text) { var s = carry + text, a = 0, b; while ((b = s.indexOf('\n', a)) >= 0) { parser.pushLine(s.substring(a, b)); a = b + 1; } carry = s.substring(a); }
+    var reader = file.stream().getReader();
+    if (/\.xml$/i.test(file.name)) {
+      found = true;
+      for (;;) { var r = await reader.read(); if (r.done) break; done += r.value.length; feed(dec.decode(r.value, { stream: true })); status('正在读取 ' + Math.round(done / total * 100) + '%'); await new Promise(requestAnimationFrame); }
+      feed(dec.decode());
+    } else {
+      if (!window.fflate) throw new Error('解压组件没加载出来，检查网络后再试一次。');
+      var uz = new fflate.Unzip(); uz.register(fflate.UnzipInflate);
+      uz.onfile = function (f) {
+        if (found || !wanted(f.name)) return; found = true;
+        f.ondata = function (e, chunk, final) { if (e) { err = e; return; } feed(dec.decode(chunk, { stream: !final })); };
+        f.start();
+      };
+      for (;;) {
+        var x = await reader.read(); if (x.done) break; done += x.value.length;
+        uz.push(x.value, false); if (err) throw err;
+        status('正在解压并读取 ' + Math.round(done / total * 100) + '%'); await new Promise(requestAnimationFrame);
+      }
+      uz.push(new Uint8Array(0), true);
+    }
+    if (carry) parser.pushLine(carry);
+    if (!found) throw new Error('压缩包里没找到健康数据的 xml 文件，确认选的是“导出所有健康数据”生成的 zip。');
+    var out = HCore.analyze(parser.raw);
+    if (!out.nights.length) throw new Error('文件读完了，但里面没有睡眠记录。确认手表开了睡眠跟踪。');
+    var months = {}, added = 0;
+    out.nights.forEach(function (n) { if (!S.nights[n.d]) added++; S.nights[n.d] = n; months[n.d.substr(0, 7)] = 1; });
+    out.days.forEach(function (d) { S.days[d.d] = d; months[d.d.substr(0, 7)] = 1; });
+    if (out.vo2.length) S.vo2 = out.vo2;
+    status('正在保存…');
+    var ok = await saveMonths(Object.keys(months).sort());
+    render();
+    status('导入完成：共 ' + out.nights.length + ' 晚，其中新增 ' + added + ' 晚，数据到 ' + out.last + '。' + (ok ? '' : ' 但没能存下来：浏览器存储不可用，不要用无痕模式。'));
+  }
+
+  /* ---------- helpers ---------- */
+  var med = HCore.median, mean = HCore.mean, sd = HCore.sd;
+  function clock(minFrom18) { if (minFrom18 == null) return '–'; var m = ((Math.round(minFrom18) + 1080) % 1440 + 1440) % 1440; return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2); }
+  function hm(min) { if (min == null) return '–'; var m = Math.round(min); return Math.floor(m / 60) + '小时' + ('0' + (m % 60)).slice(-2) + '分'; }
+  function nightsSorted() { return Object.keys(S.nights).sort().map(function (d) { return S.nights[d]; }); }
+  function mainNights() { return nightsSorted().filter(function (n) { return n.tst >= 180; }); }
+  function vals(arr, k) { return arr.map(function (n) { return typeof k === 'function' ? k(n) : n[k]; }).filter(function (v) { return v != null && !isNaN(v); }); }
+  function label(d) { var p = d.split('-'), dt = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); return (+p[1]) + '/' + (+p[2]) + ' 周' + '日一二三四五六'[dt.getUTCDay()]; }
+  function nextDay(d) { var p = d.split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + 1)).toISOString().substr(0, 10); }
+
+  /* ---------- actogram ---------- */
+  var COL = ['var(--core)', 'var(--deep)', 'var(--rem)', 'var(--awake)', 'var(--unspec)'];
+  function renderActo() {
+    var all = nightsSorted(), list = span ? all.slice(-span) : all, L = 40, R = 16, W = Math.max(320, Math.min(820, $('acto').clientWidth - 30)), pw = W - L - R, rh = 13, top = 22;
+    var H = top + list.length * rh + 6, x = function (m) { return L + Math.max(0, Math.min(1440, m)) / 1440 * pw; };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="每晚睡眠时段图">';
+    for (var h = 0; h <= 24; h += 3) {
+      var gx = x(h * 60);
+      s += '<line x1="' + gx + '" x2="' + gx + '" y1="' + (top - 4) + '" y2="' + (H - 4) + '" stroke="var(--line)" stroke-width="1"/>';
+      s += '<text x="' + gx + '" y="12" font-size="11" text-anchor="middle" fill="var(--muted)" font-family="var(--num)">' + ((18 + h) % 24) + '</text>';
+    }
+    list.forEach(function (n, i) {
+      var y = top + i * rh, p = n.d.split('-'), wd = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay();
+      s += '<text x="' + (L - 8) + '" y="' + (y + 9.5) + '" font-size="10.5" text-anchor="end" fill="var(--muted)" font-family="var(--num)">' + (+p[1]) + '/' + (+p[2]) + '</text>';
+      (n.segs || []).forEach(function (g) {
+        var x1 = x(g[0]), x2 = x(g[0] + g[1]);
+        s += '<rect x="' + x1.toFixed(1) + '" y="' + (y + (g[2] === 3 ? 3.5 : 1.5)) + '" width="' + Math.max(0.6, x2 - x1).toFixed(1) + '" height="' + (g[2] === 3 ? 6 : 10) + '" fill="' + COL[g[2]] + '"/>';
+      });
+      if (S.tags[n.d] && S.tags[n.d].length) s += '<circle cx="' + (W - R + 8) + '" cy="' + (y + 6.5) + '" r="3.2" fill="var(--ink)"><title>' + esc(S.tags[n.d].join('、')) + '</title></circle>';
+    });
+    var wx = x(S.settings.wake + 360);
+    s += '<line x1="' + wx + '" x2="' + wx + '" y1="' + (top - 4) + '" y2="' + (H - 4) + '" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="3 3"/>';
+    $('acto').innerHTML = s + '</svg>';
+  }
+
+  /* ---------- recent vs baseline ---------- */
+  function daysFor(nights) { return nights.map(function (n) { return S.days[nextDay(n.d)]; }).filter(Boolean); }
+  function renderCmp() {
+    var all = mainNights(), rec = all.slice(-7), base = all.slice(-35, -7);
+    $('cmpNote').textContent = rec.length ? ('最近：' + label(rec[0].d) + ' 到 ' + label(rec[rec.length - 1].d) + '（' + rec.length + '晚）；对照：再往前 ' + base.length + ' 晚。') : '';
+    var dr = daysFor(rec), dbs = daysFor(base);
+    var step = function (d) { return d.hrAm != null && d.hrPm != null ? d.hrPm - d.hrAm : null; };
+    // [name, hint, recent, baseline, formatter, better: -1 lower / 1 higher / 0 none, threshold]
+    var rows = [
+      ['入睡时间', '中位数', med(vals(rec, 'on')), med(vals(base, 'on')), clock, -1, 20],
+      ['起床时间', '中位数', med(vals(rec, 'off')), med(vals(base, 'off')), clock, 0, 20],
+      ['起床时间的波动', '标准差，越小节律越稳，目标1小时以内', sd(vals(rec, 'off')), sd(vals(base, 'off')), function (v) { return (v / 60).toFixed(1) + ' 小时'; }, -1, 15],
+      ['实际睡眠', '平均每晚', mean(vals(rec, 'tst')), mean(vals(base, 'tst')), hm, 0, 20],
+      ['睡成两段的夜晚', '中途清醒45分钟以上', rec.filter(function (n) { return n.split; }).length / Math.max(1, rec.length), base.filter(function (n) { return n.split; }).length / Math.max(1, base.length), function (v) { return Math.round(v * 100) + '%'; }, -1, 0.1],
+      ['深睡', '中位数', med(vals(rec, 'deep')), med(vals(base, 'deep')), function (v) { return Math.round(v) + ' 分'; }, 1, 8],
+      ['入睡后前4小时的深睡', '看助眠手段有没有用，主要看这一项', med(vals(rec, 'f4')), med(vals(base, 'f4')), function (v) { return Math.round(v) + ' 分'; }, 1, 8],
+      ['睡眠心率', '中位数', med(vals(rec, 'hr')), med(vals(base, 'hr')), function (v) { return v.toFixed(1); }, -1, 2],
+      ['睡眠时的 HRV', '中位数', med(vals(rec, 'hrv')), med(vals(base, 'hrv')), function (v) { return Math.round(v) + ' ms'; }, 1, 6],
+      ['呼吸频率', '中位数', med(vals(rec, 'rr')), med(vals(base, 'rr')), function (v) { return v.toFixed(1); }, 0, 0.8],
+      ['最低血氧', '这段时间里的最低一晚', vals(rec, 'oxMin').length ? Math.min.apply(null, vals(rec, 'oxMin')) : null, vals(base, 'oxMin').length ? Math.min.apply(null, vals(base, 'oxMin')) : null, function (v) { return Math.round(v) + '%'; }, 1, 1.5],
+      ['上午11点前的日照', '次日平均，前移生物钟靠它', mean(vals(dr, 'dlAm')), mean(vals(dbs, 'dlAm')), function (v) { return Math.round(v) + ' 分'; }, 1, 4],
+      ['步数', '次日平均', mean(vals(dr, 'steps')), mean(vals(dbs, 'steps')), function (v) { return Math.round(v); }, 1, 500],
+      ['最长连续静坐', '次日平均，10点到23点之间', mean(vals(dr, 'sed')), mean(vals(dbs, 'sed')), function (v) { return v.toFixed(1) + ' 小时'; }, -1, 0.7],
+      ['午后比上午高出的静坐心率', '12–20点减去10–12点，咖啡因和午餐的台阶', med(vals(dr, step)), med(vals(dbs, step)), function (v) { return (v > 0 ? '+' : '') + Math.round(v); }, -1, 3]
+    ];
+    var h = '<tr><th>指标</th><th class="n">最近7晚</th><th class="n">之前28晚</th><th class="n">变化</th></tr>';
+    rows.forEach(function (r) {
+      var a = r[2], b = r[3], f = r[4], cls = 'flat', txt = '–';
+      if (a != null && b != null) {
+        var d = a - b;
+        if (Math.abs(d) < r[6]) txt = '持平';
+        else { txt = d > 0 ? '升' : '降'; if (r[0].indexOf('时间') >= 0 && r[0].indexOf('波动') < 0) txt = d > 0 ? '变晚' : '变早'; if (r[5]) cls = (d * r[5] > 0) ? 'up' : 'down'; }
+      }
+      h += '<tr><td>' + r[0] + '<span class="hint">' + r[1] + '</span></td><td class="n">' + (a == null ? '–' : f(a)) + '</td><td class="n">' + (b == null ? '–' : f(b)) + '</td><td class="n ' + cls + '">' + txt + '</td></tr>';
+    });
+    $('cmp').innerHTML = h;
+  }
+
+  /* ---------- flags ---------- */
+  function renderFlags() {
+    var all = mainNights(), rec = all.slice(-14), base = all.slice(0, -1), bhr = med(vals(base, 'hr')), brr = med(vals(base, 'rr')), bon = med(vals(base, 'on')), out = [];
+    rec.forEach(function (n) {
+      var f = [];
+      if (n.hr != null && bhr != null && n.hr >= bhr + 10) {
+        if (n.rr != null && n.rr >= brr + 2.5) f.push('睡眠心率 ' + n.hr + '、呼吸 ' + n.rr + ' 同时偏高，像发热或感染。');
+        else f.push('睡眠心率 ' + n.hr + '（基线 ' + bhr.toFixed(0) + '），呼吸正常。对一下当天下午和晚上吃了什么、喝没喝酒。');
+      } else if (n.rr != null && n.rr >= brr + 5) f.push('呼吸频率 ' + n.rr + ' 很高但心率正常，多半是手表戴松了。');
+      if (n.split) f.push('睡成了两段，中途清醒约 ' + n.gap + ' 分钟。' + (bon != null && n.on <= bon - 90 ? '第一段从 ' + clock(n.on) + ' 开始，比你平时早很多：睡眠压力卸完时生物钟还没到点。' : ''));
+      if (n.on > 510) f.push('入睡在 ' + clock(n.on) + '，晚于 2:30。');
+      if (n.tst < 360) f.push('只睡了 ' + hm(n.tst) + '。');
+      if (n.tst >= 600) f.push('睡了 ' + hm(n.tst) + '，起床在 ' + clock(n.off) + '。多出来的主要是上午的浅睡和REM。');
+      if (n.oxMin != null && n.oxMin < 90) f.push('有血氧读数低到 ' + n.oxMin + '%。偶尔一次多为测量误差，反复出现要去查。');
+      if (n.bd != null && n.bd >= 10) f.push('呼吸紊乱值 ' + n.bd + '，偏高。');
+      if (f.length) out.push('<li><b>' + label(n.d) + '</b><span>' + f.map(esc).join('<br>') + (S.tags[n.d] ? '<br><span class="hint">当晚记录：' + esc(S.tags[n.d].join('、')) + '</span>' : '') + '</span></li>');
+    });
+    $('flags').innerHTML = out.length ? out.reverse().join('') : '<li style="display:block" class="sub">最近14晚没有明显偏离基线的地方。</li>';
+  }
+
+  /* ---------- log + tag comparison ---------- */
+  function renderLog() {
+    var all = nightsSorted().slice(-45).reverse(), sel = $('logNight'), cur = sel.value;
+    var opts = all.map(function (n) { return '<option value="' + n.d + '">' + label(n.d) + ' 晚' + (S.tags[n.d] ? ' · 已记' : '') + '</option>'; });
+    // allow tonight / last night even before the watch data is imported
+    var today = new Date(Date.now() + 8 * 3600e3).toISOString().substr(0, 10), yest = new Date(Date.now() + 8 * 3600e3 - 864e5).toISOString().substr(0, 10);
+    [yest, today].forEach(function (d) { if (!S.nights[d]) opts.unshift('<option value="' + d + '">' + label(d) + ' 晚（还没有手表数据）</option>'); });
+    sel.innerHTML = opts.join(''); if (cur) sel.value = cur;
+    $('presets').innerHTML = PRESETS.map(function (p) { return '<button type="button" data-p="' + esc(p) + '" aria-pressed="' + (picked[p] ? 'true' : 'false') + '">' + esc(p) + '</button>'; }).join('');
+    var ds = Object.keys(S.tags).filter(function (d) { return S.tags[d] && S.tags[d].length; }).sort().reverse();
+    $('logList').innerHTML = ds.length ? ds.slice(0, 30).map(function (d) {
+      return '<div><span class="sub" style="display:inline-block;min-width:5.5em">' + label(d) + '</span>' + S.tags[d].map(function (t, i) { return '<span class="tag">' + esc(t) + '<button type="button" aria-label="删除这条记录" data-del="' + d + '|' + i + '">×</button></span>'; }).join('') + '</div>';
+    }).join('') : '<p class="sub">还没有记录。</p>';
+    renderTagCmp();
+  }
+  function renderTagCmp() {
+    var all = mainNights(), groups = {}, none = [];
+    all.forEach(function (n) { var t = S.tags[n.d]; if (t && t.length) t.forEach(function (k) { var key = k.replace(/[（(].*$/, '').trim(); if (PRESETS.indexOf(key) < 0) key = '其他'; (groups[key] = groups[key] || []).push(n); }); else none.push(n); });
+    var keys = Object.keys(groups);
+    if (!keys.length) { $('tagCmp').innerHTML = '<tr><td class="sub">记下几晚之后，这里会把“有这项的夜晚”和“什么都没记的夜晚”并排比较。</td></tr>'; return; }
+    function row(name, a) {
+      return '<tr><td>' + esc(name) + '</td><td class="n">' + a.length + '</td><td class="n">' + clock(med(vals(a, 'on'))) + '</td><td class="n">' + (med(vals(a, 'f4')) == null ? '–' : Math.round(med(vals(a, 'f4')))) + '</td><td class="n">' + (med(vals(a, 'deep')) == null ? '–' : Math.round(med(vals(a, 'deep')))) +
+        '</td><td class="n">' + Math.round(a.filter(function (n) { return n.split; }).length / a.length * 100) + '%</td><td class="n">' + (med(vals(a, 'hr')) == null ? '–' : med(vals(a, 'hr')).toFixed(1)) + '</td><td class="n">' + (med(vals(a, 'hrv')) == null ? '–' : Math.round(med(vals(a, 'hrv')))) + '</td></tr>';
+    }
+    var h = '<tr><th>当晚记录</th><th class="n">晚数</th><th class="n">入睡</th><th class="n">前4小时深睡</th><th class="n">深睡</th><th class="n">分段</th><th class="n">睡眠心率</th><th class="n">HRV</th></tr>';
+    keys.sort().forEach(function (k) { h += row(k, groups[k]); });
+    h += row('什么都没记', none);
+    h += '<tr><td colspan="8" class="sub">都是中位数。晚数少于5时差异多半是噪声；同一晚记了多项就分不清是谁的作用。</td></tr>';
+    $('tagCmp').innerHTML = h;
+  }
+
+  /* ---------- trends ---------- */
+  function spark(title, pts, fmt, opt) {
+    opt = opt || {}; pts = pts.filter(function (p) { return p[1] != null && !isNaN(p[1]); }).slice(-60);
+    if (pts.length < 3) return '';
+    var ys = pts.map(function (p) { return p[1]; }), lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+    if (opt.ref != null) { lo = Math.min(lo, opt.ref); hi = Math.max(hi, opt.ref); }
+    if (hi - lo < 1e-6) hi = lo + 1;
+    var W = 240, H = 64, x = function (i) { return 3 + i / (pts.length - 1) * (W - 6); }, y = function (v) { return H - 5 - (v - lo) / (hi - lo) * (H - 10); };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(title) + '走势">';
+    if (opt.ref != null) s += '<line x1="0" x2="' + W + '" y1="' + y(opt.ref) + '" y2="' + y(opt.ref) + '" stroke="var(--ink)" stroke-dasharray="3 3" stroke-width="1"/>';
+    pts.forEach(function (p, i) { s += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p[1]).toFixed(1) + '" r="1.6" fill="var(--core)"><title>' + p[0] + '：' + fmt(p[1]) + '</title></circle>'; });
+    var path = '', roll = [];
+    pts.forEach(function (p, i) { var w = ys.slice(Math.max(0, i - 6), i + 1); roll.push(med(w)); path += (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(roll[i]).toFixed(1); });
+    s += '<path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/></svg>';
+    return '<div class="panel spark"><h3>' + esc(title) + '</h3><div class="v">' + fmt(roll[roll.length - 1]) + '</div>' + s + '<p class="sub">近7次中位数，共 ' + pts.length + ' 个点' + (opt.note ? '；' + opt.note : '') + '</p></div>';
+  }
+  function renderTrends() {
+    var n = mainNights(), d = Object.keys(S.days).sort().map(function (k) { return S.days[k]; });
+    var P = function (arr, k) { return arr.map(function (o) { return [o.d, typeof k === 'function' ? k(o) : o[k]]; }); };
+    var min = function (v) { return Math.round(v) + ' 分'; };
+    $('trends').innerHTML = [
+      spark('起床时间', P(n, 'off'), clock, { ref: S.settings.wake + 360, note: '虚线是目标' }),
+      spark('入睡时间', P(n, 'on'), clock),
+      spark('实际睡眠', P(n, 'tst'), hm),
+      spark('前4小时深睡', P(n, 'f4'), min),
+      spark('深睡', P(n, 'deep'), min),
+      spark('睡眠心率', P(n, 'hr'), function (v) { return v.toFixed(1); }),
+      spark('睡眠时的 HRV', P(n, 'hrv'), function (v) { return Math.round(v) + ' ms'; }),
+      spark('静息心率', P(d, 'rhr'), function (v) { return Math.round(v); }),
+      spark('上午日照', P(d, 'dlAm'), min),
+      spark('步数', P(d, 'steps'), function (v) { return Math.round(v); }),
+      spark('最长连续静坐', P(d, 'sed'), function (v) { return v.toFixed(1) + ' 小时'; }),
+      spark('午后心率台阶', P(d, function (o) { return o.hrAm != null && o.hrPm != null ? o.hrPm - o.hrAm : null; }), function (v) { return (v > 0 ? '+' : '') + Math.round(v); }),
+      spark('呼吸紊乱值', P(n, 'bd'), function (v) { return v.toFixed(1); })
+    ].join('');
+  }
+
+  function render() {
+    var all = nightsSorted(), has = all.length > 0;
+    $('app').hidden = !has; $('emptyState').hidden = has;
+    $('range').textContent = has ? ('已记录 ' + all.length + ' 晚，' + label(all[0].d) + ' 到 ' + label(all[all.length - 1].d) + '。数据只存在这台设备上') : '还没有数据';
+    if (!has) return;
+    var w = S.settings.wake; $('wake').value = ('0' + Math.floor(w / 60)).slice(-2) + ':' + ('0' + (w % 60)).slice(-2);
+    renderActo(); renderCmp(); renderFlags(); renderLog(); renderTrends();
+  }
+
+  /* ---------- events ---------- */
+  $('importBtn').addEventListener('click', function () { $('file').click(); });
+  $('file').addEventListener('change', async function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    $('importBtn').disabled = true;
+    try { await importFile(f); } catch (er) { status('导入没成功：' + (er && er.message ? er.message : '文件读不出来') + ''); }
+    $('importBtn').disabled = false; e.target.value = '';
+  });
+  $('spanBtns').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return; span = +b.dataset.span;
+    [].forEach.call(this.querySelectorAll('button'), function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    renderActo();
+  });
+  $('wake').addEventListener('change', function () { var p = this.value.split(':'); if (p.length < 2) return; S.settings.wake = +p[0] * 60 + +p[1]; renderActo(); renderTrends(); saveSettings(); });
+  $('presets').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; var p = b.dataset.p; picked[p] = !picked[p]; b.setAttribute('aria-pressed', picked[p] ? 'true' : 'false'); });
+  $('logSave').addEventListener('click', async function () {
+    var d = $('logNight').value, items = PRESETS.filter(function (p) { return picked[p]; }), o = $('logOther').value.trim();
+    if (o) items.push(o.slice(0, 60));
+    if (!d || !items.length) { status('先选一项或写一句，再保存。'); return; }
+    var cur = (S.tags[d] || []).slice(); items.forEach(function (t) { if (cur.indexOf(t) < 0) cur.push(t); }); S.tags[d] = cur;
+    picked = {}; $('logOther').value = ''; renderLog(); renderActo(); renderFlags(); await saveTags(); status('已保存 ' + label(d) + ' 晚的记录。');
+  });
+  $('logList').addEventListener('click', async function (e) {
+    var b = e.target.closest('button[data-del]'); if (!b) return; var p = b.dataset.del.split('|'), a = (S.tags[p[0]] || []).slice(); a.splice(+p[1], 1);
+    if (a.length) S.tags[p[0]] = a; else delete S.tags[p[0]]; renderLog(); renderActo(); renderFlags(); await saveTags();
+  });
+  var wipeArmed = false;
+  $('wipe').addEventListener('click', async function () {
+    if (!wipeArmed) { wipeArmed = true; this.textContent = '再点一次确认清空'; return; }
+    wipeArmed = false; this.textContent = '清空已保存的数据';
+    try { localStorage.removeItem(LS); } catch (e) { }
+    S = { nights: {}, days: {}, tags: {}, settings: { wake: 540 }, vo2: [] }; render(); status('已清空。');
+  });
+
+  $('backupBtn').addEventListener('click', function () {
+    var blob = new Blob([JSON.stringify(S)], { type: 'application/json' }), u = URL.createObjectURL(blob), l = document.createElement('a');
+    l.href = u; l.download = 'sleep-backup-' + new Date().toISOString().substr(0, 10) + '.json'; document.body.appendChild(l); l.click(); l.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 5000);
+  });
+  $('restoreBtn').addEventListener('click', function () { $('restoreFile').click(); });
+  $('restoreFile').addEventListener('change', async function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    try {
+      var o = JSON.parse(await f.text()); if (!o || typeof o.nights !== 'object') throw new Error('x');
+      var n = 0; Object.keys(o.nights).forEach(function (d) { if (!S.nights[d]) n++; S.nights[d] = o.nights[d]; });
+      Object.keys(o.days || {}).forEach(function (d) { S.days[d] = o.days[d]; });
+      Object.keys(o.tags || {}).forEach(function (d) { if (!S.tags[d]) S.tags[d] = o.tags[d]; });
+      if (o.settings && o.settings.wake != null) S.settings.wake = o.settings.wake; if (o.vo2 && o.vo2.length) S.vo2 = o.vo2;
+      var ok = saveLocal(); render(); status('已恢复备份，新增 ' + n + ' 晚。' + (ok ? '' : ' 但没能存下来：浏览器存储不可用。'));
+    } catch (er) { status('这个文件不是本应用导出的备份。'); }
+    e.target.value = '';
+  });
+  $('pasteBtn').addEventListener('click', async function () {
+    try { var t = await navigator.clipboard.readText(); if (!t || t.indexOf('#sleep') < 0) { status('剪贴板里不是快捷指令生成的文本。'); return; } await importFeed(t); }
+    catch (er) { status('没能更新：' + (er && er.message ? er.message : '读不到剪贴板，改用“导入”选文件。')); }
+  });
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(function () { });
+  var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(function () { if (!$('app').hidden) renderActo(); }, 150); });
+  loadAll().then(function () { render(); });
+})();
+
+</script>
+</body>
+</html>
